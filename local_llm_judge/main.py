@@ -53,6 +53,7 @@ def product_row_to_dict(row):
     if 'product_name_x' in row:
         return {
             'id': row['option_id_x'],
+            'brand_name': row['brand_name_x'],
             'name': row['product_name_x'],
             'description': row['product_description_x'],
             'category': row['category_x'],
@@ -61,6 +62,7 @@ def product_row_to_dict(row):
     elif 'product_name_y' in row:
         return {
             'id': row['option_id_y'],
+            'brand_name': row['brand_name_y'],
             'name': row['product_name_y'],
             'description': row['product_description_y'],
             'category': row['category_y'],
@@ -72,11 +74,13 @@ def output_row(query, product_lhs, product_rhs, human_preference, agent_preferen
     return {
         'query': query,
         'product_name_lhs': product_lhs['name'],
+        'brand_name_lhs': product_lhs['brand_name'],
         'product_description_lhs': product_lhs['description'],
         'option_id_lhs': product_lhs['id'],
         'category_lhs': product_lhs['category'],
         'grade_lhs': product_lhs['grade'],
         'product_name_rhs': product_rhs['name'],
+        'brand_name_rhs': product_rhs['brand_name'],
         'product_description_rhs': product_rhs['description'],
         'option_id_rhs': product_rhs['id'],
         'category_rhs': product_rhs['category'],
@@ -142,8 +146,10 @@ def main(eval_fn=eval_agent.unanimous_ensemble_name_desc,
     for idx, row in df.iterrows():
         query = " ".join(row['user_messages_x'])
         product_lhs = product_row_to_dict(row[['product_name_x', 'product_description_x',
+                                               'brand_name_x',
                                                'option_id_x', 'category_x', 'grade_x']])
         product_rhs = product_row_to_dict(row[['product_name_y', 'product_description_y',
+                                               'brand_name_y',
                                                'option_id_y', 'category_y', 'grade_y']])
         if has_been_labeled(results_df, query, product_lhs, product_rhs):
             logger.info(f"Already rated query: {query}, " +

@@ -91,7 +91,7 @@ def describe_and_decide(query, product_lhs, product_rhs):
 
 def name(query, product_lhs, product_rhs):
     instruction = f"""
-        Which of these products is more relevant to the furniture e-commerce search query:
+        Which of these products is more relevant to the fashion e-commerce search query:
 
         Query: {query}
 
@@ -106,7 +106,7 @@ def name(query, product_lhs, product_rhs):
 
 def name_description(query, product_lhs, product_rhs):
     instruction = f"""
-        Which of these products is more relevant to the furniture e-commerce search query:
+        Which of these products is more relevant to the fashion e-commerce search query:
 
         Query: {query}
 
@@ -127,7 +127,7 @@ def name_allow_neither(query, product_lhs, product_rhs):
     instruction = f"""
         Neither product is more relevant to the query, unless given compelling evidence.
 
-        Which of these product names (if either) is more relevant to the furniture e-commerce search query:
+        Which of these product names (if either) is more relevant to the fashion e-commerce search query:
 
         Query: {query}
 
@@ -155,7 +155,7 @@ def name_w_desc_allow_neither(query, product_lhs, product_rhs):
     instruction = f"""
         Neither product is more relevant to the query, unless given compelling evidence.
 
-        Which of these product names (if either) is more relevant to the furniture e-commerce search query:
+        Which of these product names (if either) is more relevant to the fashion e-commerce search query:
 
         Query: {query}
 
@@ -180,7 +180,7 @@ def name_w_desc_allow_neither(query, product_lhs, product_rhs):
 
 def classs(query, product_lhs, product_rhs):
     instruction = f"""
-        Which of these product classifications (if either) is more relevant to the furniture e-commerce search query:
+        Which of these product classifications (if either) is more relevant to the fashion e-commerce search query:
 
         Query: {query}
 
@@ -201,7 +201,7 @@ def class_allow_neither(query, product_lhs, product_rhs):
     instruction = f"""
         Neither product is more relevant to the query, unless given compelling evidence.
 
-        Which of these product names (if either) is more relevant to the furniture e-commerce search query:
+        Which of these product names (if either) is more relevant to the fashion e-commerce search query:
 
         Query: {query}
 
@@ -224,7 +224,7 @@ def class_allow_neither(query, product_lhs, product_rhs):
 
 def category(query, product_lhs, product_rhs):
     instruction = f"""
-        Which of these product categories (if either) is more relevant to the furniture e-commerce search query:
+        Which of these product categories (if either) is more relevant to the fashion e-commerce search query:
 
         Query: {query}
 
@@ -245,7 +245,7 @@ def category_allow_neither(query, product_lhs, product_rhs):
     instruction = f"""
         Neither product is more relevant to the query, unless given compelling evidence.
 
-        Which of these product names (if either) is more relevant to the furniture e-commerce search query:
+        Which of these product names (if either) is more relevant to the fashion e-commerce search query:
 
         Query: {query}
 
@@ -268,7 +268,7 @@ def category_allow_neither(query, product_lhs, product_rhs):
 
 def desc(query, product_lhs, product_rhs):
     instruction = f"""
-        Which of these product descriptions (if either) is more relevant to the furniture e-commerce search query:
+        Which of these product descriptions (if either) is more relevant to the fashion e-commerce search query:
 
         Query: {query}
 
@@ -286,7 +286,7 @@ def desc_allow_neither(query, product_lhs, product_rhs):
     instruction = f"""
         Neither product is more relevant to the query, unless given compelling evidence.
 
-        Which of these product names (if either) is more relevant to the furniture e-commerce search query:
+        Which of these product names (if either) is more relevant to the fashion e-commerce search query:
 
         Query: {query}
 
@@ -372,7 +372,7 @@ def name_allow_neither2(query, product_lhs, product_rhs):
            2  points if you pick the product most relevant (LHS or RHS below)
            -1 points for the wrong product name. So be careful! Choose LHS or RHS only when confident!
 
-        Which of these product names (if either) is more relevant to the furniture e-commerce search query:
+        Which of these product names (if either) is more relevant to the fashion e-commerce search query:
 
         Query: {query}
 
@@ -496,19 +496,19 @@ def all_fields_allow_neither(query, product_lhs, product_rhs):
     instruction = f"""
         Neither product is more relevant to the query, unless given compelling evidence.
 
-        Which of these furniture products (if either) is more relevant to the furniture e-commerce search query:
+        Which of these fashion products (if either) is more relevant to the fashion e-commerce search query:
 
         Query: {query}
 
         Product LHS name: {product_lhs['name']}
+        product LHS brand: {product_lhs['brand_name']}
         Product LHS description: {product_lhs['description']}
-        Product LHS class: {product_lhs['class']}
-        Product LHS category hierarchy: {product_lhs['category_hierarchy']}
+        Product LHS category: {product_lhs['category']}
 
         Product RHS name: {product_rhs['name']}
+        Product RHS brand: {product_rhs['brand_name']}
         Product RHS description: {product_rhs['description']}
-        Product RHS class: {product_rhs['class']}
-        Product RHS category hierarchy: {product_rhs['category_hierarchy']}
+        Product RHS category: {product_rhs['category']}
 
         Neither / Need more product attributes
 
@@ -523,19 +523,17 @@ def all_fields_allow_neither(query, product_lhs, product_rhs):
 
 def all_fields(query, product_lhs, product_rhs):
     instruction = f"""
-        Which of these furniture products is more relevant to the furniture e-commerce search query:
+        Which of these fashion products is more relevant to the fashion e-commerce search query:
 
         Query: {query}
 
         Product LHS name: {product_lhs['name']}
         Product LHS description: {product_lhs['description']}
-        Product LHS class: {product_lhs['class']}
-        Product LHS category hierarchy: {product_lhs['category_hierarchy']}
+        Product LHS category: {product_lhs['category']}
 
         Product RHS name: {product_rhs['name']}
         Product RHS description: {product_rhs['description']}
-        Product RHS class: {product_rhs['class']}
-        Product RHS category hierarchy: {product_rhs['category_hierarchy']}
+        Product RHS category hierarchy: {product_rhs['category']}
 
 
         Respond with just 'LHS' or 'RHS'

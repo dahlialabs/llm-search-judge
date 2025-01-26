@@ -2,6 +2,11 @@ import pandas as pd
 
 
 def _build_pairwise_df(labeled_df, n, seed=42):
+    # Map grades 1,2 to 1
+    labeled_df['grade'] = labeled_df['grade'].map({1: 1, 2: 1, 3: 2, 4: 2, 5: 3})
+    # Drop the 2s
+    labeled_df = labeled_df[labeled_df['grade'] != 2]
+    labeled_df = labeled_df[~labeled_df['product_name'].isnull()]
     # Get pairwise
     pairwise = labeled_df.merge(labeled_df, on='query_id')
     # Shuffle completely, otherwise they're somewhat sorted on query
