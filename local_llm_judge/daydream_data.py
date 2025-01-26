@@ -22,7 +22,17 @@ def _build_pairwise_df(labeled_df, n, seed=42):
     return pairwise.head(n)
 
 
+img_root = "https://cdn.stag.dahlialabs.dev/fotomancer/_/rs:fit:512:1024/plain/gs://dahlia-stag-gcs-public-assets/"
+
+
+def _img_proxy_url(img_url):
+    img_proxy = img_root + img_url
+    return img_proxy
+
+
 def pairwise_df(n, seed=42):
     labeled_df = pd.read_parquet('data/labeled_options.parquet')
+    # labeled_df['main_image'] = labeled_df['main_image'].apply(_img_proxy_url)
     labeled_df.rename(columns={'description': 'product_description', 'rating': 'grade'}, inplace=True)
+    labeled_df.drop_duplicates(subset=['query_id', 'option_id'], inplace=True)
     return _build_pairwise_df(labeled_df, n, seed)

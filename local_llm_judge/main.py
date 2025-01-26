@@ -126,7 +126,7 @@ def has_been_labeled(results_df, query, product_lhs, product_rhs):
 
 
 def main(eval_fn=eval_agent.unanimous_ensemble_name_desc,
-         N=250,
+         N=1000,
          destroy_cache=False,
          history_path=".llm_shell_history",
          seed=42):
