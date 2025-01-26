@@ -8,7 +8,7 @@ from prompt_toolkit.history import FileHistory
 
 import local_llm_judge.eval_agent as eval_agent
 from local_llm_judge.log_stdout import enable
-from local_llm_judge.wands_data import pairwise_df
+from local_llm_judge.daydream_data import pairwise_df
 
 logger = logging.getLogger(__name__)
 
@@ -52,20 +52,18 @@ def parse_args():
 def product_row_to_dict(row):
     if 'product_name_x' in row:
         return {
-            'id': row['product_id_x'],
+            'id': row['option_id_x'],
             'name': row['product_name_x'],
             'description': row['product_description_x'],
-            'class': row['product_class_x'],
-            'category_hierarchy': row['category hierarchy_x'],
+            'category': row['category_x'],
             'grade': row['grade_x']
         }
     elif 'product_name_y' in row:
         return {
-            'id': row['product_id_y'],
+            'id': row['option_id_y'],
             'name': row['product_name_y'],
             'description': row['product_description_y'],
-            'class': row['product_class_y'],
-            'category_hierarchy': row['category hierarchy_y'],
+            'category': row['category_y'],
             'grade': row['grade_y']
         }
 
@@ -75,15 +73,13 @@ def output_row(query, product_lhs, product_rhs, human_preference, agent_preferen
         'query': query,
         'product_name_lhs': product_lhs['name'],
         'product_description_lhs': product_lhs['description'],
-        'product_id_lhs': product_lhs['id'],
-        'product_class_lhs': product_lhs['class'],
-        'category_hierarchy_lhs': product_lhs['category_hierarchy'],
+        'option_id_lhs': product_lhs['id'],
+        'category_lhs': product_lhs['category'],
         'grade_lhs': product_lhs['grade'],
         'product_name_rhs': product_rhs['name'],
         'product_description_rhs': product_rhs['description'],
-        'product_id_rhs': product_rhs['id'],
-        'product_class_rhs': product_rhs['class'],
-        'category_hierarchy_rhs': product_rhs['category_hierarchy'],
+        'option_id_rhs': product_rhs['id'],
+        'category_rhs': product_rhs['category'],
         'grade_rhs': product_rhs['grade'],
         'human_preference': human_preference,
         'agent_preference': agent_preference
@@ -120,8 +116,8 @@ def results_df_stats(results_df):
 def has_been_labeled(results_df, query, product_lhs, product_rhs):
     result_exists = (len(results_df) > 0
                      and (results_df[(results_df['query'] == query) &
-                          (results_df['product_id_lhs'] == product_lhs['id']) &
-                          (results_df['product_id_rhs'] == product_rhs['id'])].shape[0] > 0))
+                          (results_df['option_id_lhs'] == product_lhs['id']) &
+                          (results_df['option_id_rhs'] == product_rhs['id'])].shape[0] > 0))
     return result_exists
 
 
@@ -144,13 +140,11 @@ def main(eval_fn=eval_agent.unanimous_ensemble_name_desc,
         pass
 
     for idx, row in df.iterrows():
-        query = row['query_x']
+        query = " ".join(row['user_messages_x'])
         product_lhs = product_row_to_dict(row[['product_name_x', 'product_description_x',
-                                               'product_class_x',
-                                               'product_id_x', 'category hierarchy_x', 'grade_x']])
+                                               'option_id_x', 'category_x', 'grade_x']])
         product_rhs = product_row_to_dict(row[['product_name_y', 'product_description_y',
-                                               'product_class_y',
-                                               'product_id_y', 'category hierarchy_y', 'grade_y']])
+                                               'option_id_y', 'category_y', 'grade_y']])
         if has_been_labeled(results_df, query, product_lhs, product_rhs):
             logger.info(f"Already rated query: {query}, " +
                         f"product_lhs: {product_lhs['name']}, product_rhs: {product_rhs['name']}")

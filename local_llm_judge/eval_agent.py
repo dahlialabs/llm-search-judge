@@ -11,7 +11,7 @@ qwen = Qwen()
 def generate(prompt, system=None):
     msgs = [{"role": "user", "content": prompt}]
     if not system:
-        system = "You are a helpful assistant evaluating search relevance of furniture products."
+        system = "You are a helpful assistant evaluating search relevance of fashion products."
         msgs = [{"role": "system", "content": system}] + msgs
 
     response = qwen(msgs)
@@ -39,7 +39,7 @@ def describe(query, product):
         Product Name: {product['name']}
         Product Description: {product['description']}
         Product Class: {product['class']}
-        Category Hierachy: {product['category_hierarchy']}
+        Category Hierachy: {product['category']}
 
         Describe the pros/cons/features of the product to satisfy the query: {query}
 
@@ -228,9 +228,9 @@ def category(query, product_lhs, product_rhs):
 
         Query: {query}
 
-        Product LHS category hierarchy: {product_lhs['category_hierarchy']}
+        Product LHS category : {product_lhs['category']}
         Or
-        Product RHS category hierarchy: {product_rhs['category_hierarchy']}
+        Product RHS category : {product_rhs['category']}
 
         Respond with just 'LHS' or 'RHS'
     """
@@ -239,7 +239,7 @@ def category(query, product_lhs, product_rhs):
 
 
 def category_allow_neither(query, product_lhs, product_rhs):
-    if product_lhs['category_hierarchy'] == product_rhs['category_hierarchy']:
+    if product_lhs['category'] == product_rhs['category']:
         return 'Neither'
 
     instruction = f"""
@@ -249,10 +249,10 @@ def category_allow_neither(query, product_lhs, product_rhs):
 
         Query: {query}
 
-        Product LHS category hierarchy: {product_lhs['category_hierarchy']}
+        Product LHS category : {product_lhs['category']}
             (remaining product attributes omited)
         Or
-        Product RHS category hierarchy: {product_rhs['category_hierarchy']}
+        Product RHS category : {product_rhs['category']}
             (remaining product attributes omited)
         Or
         Neither / Need more product attributes
@@ -440,12 +440,10 @@ def all_cot(query, product_lhs, product_rhs):
         In one or two sentences, describe each of these products characteristics:
         Product LHS: {product_lhs['name']}
            Description: {product_lhs['description']}
-                 Class: {product_lhs['class']}
-    Category Hierarchy: {product_lhs['category_hierarchy']}
+    Category Hierarchy: {product_lhs['category']}
         Product RHS: {product_rhs['name']}
            Description: {product_rhs['description']}
-                 Class: {product_rhs['class']}
-    Category Hierarchy: {product_rhs['category_hierarchy']}
+    Category Hierarchy: {product_rhs['category']}
 
 
         Next, describe in a few sentences the pros/cons of these products for the query.

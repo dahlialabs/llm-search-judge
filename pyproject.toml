@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "local-lm-as-judge"
+name = "llm-search-judge"
 version = "0.1.0"
 description = ""
 authors = ["Doug Turnbull <softwaredoug@gmail.com>"]
@@ -12,6 +12,7 @@ mlx = "^0.22.0"
 mlx-lm = "^0.21.0"
 prompt-toolkit = "^3.0.48"
 scikit-learn = "^1.6.1"
+pyarrow = "^19.0.0"
 
 
 [build-system]
