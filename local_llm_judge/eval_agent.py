@@ -178,50 +178,6 @@ def name_w_desc_allow_neither(query, product_lhs, product_rhs):
     return _parse_decision(response)
 
 
-def classs(query, product_lhs, product_rhs):
-    instruction = f"""
-        Which of these product classifications (if either) is more relevant to the fashion e-commerce search query:
-
-        Query: {query}
-
-        Product LHS class: {product_lhs['class']}
-        Or
-        Product RHS class: {product_rhs['class']}
-
-        Respond with just 'LHS' or 'RHS'
-    """
-    response = generate(instruction)
-    return _parse_decision(response)
-
-
-def class_allow_neither(query, product_lhs, product_rhs):
-    if product_lhs['class'] == product_rhs['class']:
-        return 'Neither'
-
-    instruction = f"""
-        Neither product is more relevant to the query, unless given compelling evidence.
-
-        Which of these product names (if either) is more relevant to the fashion e-commerce search query:
-
-        Query: {query}
-
-        Product LHS class: {product_lhs['class']}
-            (remaining product attributes omited)
-        Or
-        Product RHS class: {product_rhs['class']}
-            (remaining product attributes omited)
-        Or
-        Neither / Need more product attributes
-
-        Only respond 'LHS' or 'RHS' if you are confident in your decision
-
-        Respond with just 'LHS - I am confident', 'RHS - I am confident', or 'Neither - not confident'
-        with no other text. Respond 'Neither' if not enough evidence.
-    """
-    response = generate(instruction)
-    return _parse_decision(response)
-
-
 def category(query, product_lhs, product_rhs):
     instruction = f"""
         Which of these product categories (if either) is more relevant to the fashion e-commerce search query:
@@ -294,6 +250,47 @@ def desc_allow_neither(query, product_lhs, product_rhs):
             (remaining product attributes omited)
         Or
         Product RHS description: {product_rhs['description']}
+            (remaining product attributes omited)
+        Or
+        Neither / Need more product attributes
+
+        Only respond 'LHS' or 'RHS' if you are confident in your decision
+
+        Respond with just 'LHS - I am confident', 'RHS - I am confident', or 'Neither - not confident'
+        with no other text. Respond 'Neither' if not enough evidence.
+    """
+    response = generate(instruction)
+    return _parse_decision(response)
+
+
+def brand(query, product_lhs, product_rhs):
+    instruction = f"""
+        Which of these product brands (if either) is more relevant to the fashion e-commerce search query:
+
+        Query: {query}
+
+        Product LHS brand : {product_lhs['brand_name']}
+        Or
+        Product RHS brand : {product_rhs['brand_name']}
+
+        Respond with just 'LHS' or 'RHS'
+    """
+    response = generate(instruction)
+    return _parse_decision(response)
+
+
+def brand_allow_neither(query, product_lhs, product_rhs):
+    instruction = f"""
+        Neither product is more relevant to the query, unless given compelling evidence.
+
+        Which of these product names (if either) is more relevant to the fashion e-commerce search query:
+
+        Query: {query}
+
+        Product LHS brand : {product_lhs['brand_name']}
+            (remaining product attributes omited)
+        Or
+        Product RHS brand : {product_rhs['brand_name']}
             (remaining product attributes omited)
         Or
         Neither / Need more product attributes
@@ -528,10 +525,12 @@ def all_fields(query, product_lhs, product_rhs):
         Query: {query}
 
         Product LHS name: {product_lhs['name']}
+        product LHS brand: {product_lhs['brand_name']}
         Product LHS description: {product_lhs['description']}
         Product LHS category: {product_lhs['category']}
 
         Product RHS name: {product_rhs['name']}
+        Product RHS brand: {product_rhs['brand_name']}
         Product RHS description: {product_rhs['description']}
         Product RHS category hierarchy: {product_rhs['category']}
 
@@ -546,6 +545,8 @@ def all_fns():
     return [
         name,
         name_allow_neither2,
+        brand,
+        brand_allow_neither,
         name_cot,
         name_cot2,
         all_cot,
@@ -555,8 +556,6 @@ def all_fns():
         unanimous_ensemble_name_w_desc,
         name_allow_neither,
         name_w_desc_allow_neither,
-        classs,
-        class_allow_neither,
         category,
         category_allow_neither,
         desc,
