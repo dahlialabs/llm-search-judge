@@ -9,6 +9,7 @@ from prompt_toolkit.history import FileHistory
 import local_llm_judge.eval_agent as eval_agent
 from local_llm_judge.log_stdout import enable
 from local_llm_judge.daydream_data import pairwise_df
+from local_llm_judge.image_fetch import fetch_and_resize
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,8 @@ def product_row_to_dict(row):
             'id': row['option_id_x'],
             'brand_name': row['brand_name_x'],
             'name': row['product_name_x'],
+            'main_image': row['main_image_x'],
+            'main_image_path': fetch_and_resize(url=row['main_image_x'], option_id=row['option_id_x']),
             'description': row['product_description_x'],
             'category': row['category_x'],
             'grade': row['grade_x']
@@ -63,6 +66,8 @@ def product_row_to_dict(row):
         return {
             'id': row['option_id_y'],
             'brand_name': row['brand_name_y'],
+            'main_image': row['main_image_y'],
+            'main_image_path': fetch_and_resize(url=row['main_image_y'], option_id=row['option_id_y']),
             'name': row['product_name_y'],
             'description': row['product_description_y'],
             'category': row['category_y'],
@@ -78,12 +83,16 @@ def output_row(query, product_lhs, product_rhs, human_preference, agent_preferen
         'product_description_lhs': product_lhs['description'],
         'option_id_lhs': product_lhs['id'],
         'category_lhs': product_lhs['category'],
+        'main_image_lhs': product_lhs['main_image'],
+        'main_image_path_lhs': product_lhs['main_image_path'],
         'grade_lhs': product_lhs['grade'],
         'product_name_rhs': product_rhs['name'],
         'brand_name_rhs': product_rhs['brand_name'],
         'product_description_rhs': product_rhs['description'],
         'option_id_rhs': product_rhs['id'],
         'category_rhs': product_rhs['category'],
+        'main_image_rhs': product_rhs['main_image'],
+        'main_image_path_rhs': product_rhs['main_image_path'],
         'grade_rhs': product_rhs['grade'],
         'human_preference': human_preference,
         'agent_preference': agent_preference
@@ -146,10 +155,10 @@ def main(eval_fn=eval_agent.unanimous_ensemble_name_desc,
     for idx, row in df.iterrows():
         query = " ".join(row['user_messages_x'])
         product_lhs = product_row_to_dict(row[['product_name_x', 'product_description_x',
-                                               'brand_name_x',
+                                               'brand_name_x', 'main_image_x',
                                                'option_id_x', 'category_x', 'grade_x']])
         product_rhs = product_row_to_dict(row[['product_name_y', 'product_description_y',
-                                               'brand_name_y',
+                                               'brand_name_y', 'main_image_y',
                                                'option_id_y', 'category_y', 'grade_y']])
         if has_been_labeled(results_df, query, product_lhs, product_rhs):
             logger.info(f"Already rated query: {query}, " +

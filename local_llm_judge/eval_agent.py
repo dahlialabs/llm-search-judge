@@ -1,11 +1,14 @@
 import logging
 
+from functools import cache
 from local_llm_judge.qwen import Qwen, Agent
+from local_llm_judge.qwen_vlm import QwenImageModel
 
 
 logger = logging.getLogger(__name__)
 
 qwen = Qwen()
+qwen_vlm = QwenImageModel()
 
 
 def generate(prompt, system=None):
@@ -541,8 +544,35 @@ def all_fields(query, product_lhs, product_rhs):
     return _parse_decision(response)
 
 
+@cache
+def caption_image(caption_prompt, image_path):
+    response = qwen_vlm.single(prompt=caption_prompt, image_path=image_path)
+    return response
+
+
+def captions(query, product_lhs, product_rhs):
+    caption_prompt = "Describe the important characteristics (color, fit, style, material, etc) of this image to a fashion shopper in English."
+    if product_lhs['main_image_path'] is None or product_rhs['main_image_path'] is None:
+        return 'Neither'
+    response_lhs = caption_image(caption_prompt, product_lhs['main_image_path'])
+    response_rhs = caption_image(caption_prompt, product_rhs['main_image_path'])
+    instruction = f"""
+        Which of these describe product images is more relevant to the fashion e-commerce search query:
+
+        Query: {query}
+
+        Product LHS image: {response_lhs}
+        Product RHS image: {response_rhs}
+
+        Respond with just 'LHS' or 'RHS'
+    """
+    response = generate(instruction)
+    return _parse_decision(response)
+
+
 def all_fns():
     return [
+        captions,
         name,
         name_allow_neither2,
         brand,

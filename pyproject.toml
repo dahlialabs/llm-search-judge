@@ -13,6 +13,8 @@ mlx-lm = "^0.21.0"
 prompt-toolkit = "^3.0.48"
 scikit-learn = "^1.6.1"
 pyarrow = "^19.0.0"
+mlx-vlm = "^0.1.11"
+pillow = "^11.1.0"
 
 
 [build-system]
