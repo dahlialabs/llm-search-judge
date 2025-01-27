@@ -1,128 +1,11 @@
 import pickle
-import argparse
-import os
 import pandas as pd
 import json
 import functools
-from google.cloud import secretmanager
-from google.protobuf import wrappers_pb2
-from liaison_client.generated_types.dahlialabs.liaison.v1beta1 import product_pb2
 
 from local_llm_judge import eval_agent
-from local_llm_judge.main import product_row_to_dict
 from local_llm_judge.train import preference_to_label
-from local_llm_judge.es_metadata import es_metadata, es_stag, es_prod
-from local_llm_judge.image_fetch import fetch_and_resize
-
-from liaison_client import Client, Config
-from liaison_client.helpers import replay_chat
-from liaison_client.client import product_pb2
-from liaison_client.exceptions import RpcError
-
-secret_manager_client = secretmanager.SecretManagerServiceClient()
-
-def liaison_key(project="dahlia-infra-stag"):
-    key = secret_manager_client.access_secret_version(
-        name=f"projects/{project}/secrets/liaison-global-apiKey/versions/latest"
-    ).payload.data.decode("utf-8")
-    return key
-
-
-@functools.lru_cache()
-def stag_liaison():
-    uri = 'liaison.stag.dahlialabs.dev:443'
-    token = liaison_key(project="dahlia-infra-stag")
-    liaison_config = Config(
-        host=uri,
-        api_token=token,
-        default_timeout_ms=30000,
-        use_tls=True
-    )
-    return Client(config=liaison_config)
-
-
-@functools.lru_cache()
-def prod_liaison():
-    uri = 'liaison.dahlialabs.dev:443'
-    token = liaison_key(project="dahlia-infra-prod")
-    liaison_config = Config(
-        host=uri,
-        api_token=token,
-        default_timeout_ms=30000,
-        use_tls=True
-    )
-    return Client(config=liaison_config)
-
-
-def search_settings_proto_to_dict(search_settings_proto):
-    def _to_list(proto_list):
-        return [str(item) for item in proto_list]
-
-    def _filter_to_dict(filters):
-        return {
-            'brand': _to_list(filters.brand),
-            'color': _to_list(filters.color),
-            'department': _to_list(filters.department),
-            'material': _to_list(filters.material),
-            'tag': _to_list(filters.tag),
-            'category': _to_list(filters.category),
-            'option_id': _to_list(filters.option_id),
-        }
-
-    search_settings = {
-        "search_string": search_settings_proto.search_string,
-        "minimum_price": search_settings_proto.minimum_price,
-        "maximum_price": search_settings_proto.maximum_price,
-        "lexical_search": search_settings_proto.lexical_search,
-        "image_search": search_settings_proto.image_search,
-    }
-    positive_filters = search_settings_proto.positive_filters
-    if positive_filters:
-        search_settings["positive_filters"] = _filter_to_dict(positive_filters)
-    negative_filters = search_settings_proto.negative_filters
-    if negative_filters:
-        search_settings["negative_filters"] = _filter_to_dict(negative_filters)
-    return search_settings
-
-
-def products_for_msgs(liaison_client, es_client, user_messages, user_id="46467832-d7e9-43b9-9946-e0c00a1f7a76"):
-    agent_resp = replay_chat(liaison_client, user_messages, user_id)
-    chat_id = agent_resp.id
-    listProductsReq = product_pb2.ListProductCardsRequest(
-        page_size=10,
-        chat_search_context=product_pb2.ListProductCardsSearchContext(
-            chat_id=wrappers_pb2.StringValue(value=chat_id)  # pylint: disable=no-member
-        )
-    )
-    listProductsReq.chat_search_context.search_settings.MergeFrom(agent_resp.search_settings)
-    search_settings_dict = search_settings_proto_to_dict(agent_resp.search_settings)
-    result = liaison_client.product.list_product_cards(request=listProductsReq)
-    ranked_options = []
-    for product in result.products:
-        product_name = product.name
-        brand_name = product.brand_data.name
-        description = product.description
-        for option in product.options:
-            if not option.provenance.source:
-                break
-            main_image_url = None
-            for image in option.images:
-                if image.is_main:
-                    main_image_url = image.src
-                    break
-            ranked_options.append({
-                "product_name": product_name,
-                "brand_name": brand_name,
-                "option_id": option.id,
-                "main_image": main_image_url,
-                'main_image_path': fetch_and_resize(main_image_url, option.id),
-                "product_description": description,
-            })
-    df = pd.DataFrame(ranked_options)
-    extra_metadata = es_metadata(es_client, df['option_id'].tolist())
-    df = df.merge(extra_metadata[['option_id', 'category']], on='option_id')
-    df.rename(columns={'option_id': 'id', 'product_name': 'name', 'product_description': 'description'}, inplace=True)
-    return df, search_settings_dict
+from local_llm_judge.search_backend import stag, prod
 
 
 class FeatureCache:
@@ -191,13 +74,19 @@ def compare_results(model_path, query, results_lhs, results_rhs, cache, thresh=0
         result = {
             'query': query,
             'name_lhs': results_lhs.iloc[posn]['name'] if posn < len(results_lhs) else None,
+            'brand_name_lhs': results_lhs.iloc[posn]['brand_name'] if posn < len(results_lhs) else None,
+            'desc_lhs': results_lhs.iloc[posn]['description'] if posn < len(results_lhs) else None,
+            'backend_lhs': results_lhs.iloc[posn]['backend'] if posn < len(results_lhs) else None,
             'option_id_lhs': results_lhs.iloc[posn]['id'] if posn < len(results_lhs) else None,
             'image_url_lhs': results_lhs.iloc[posn]['main_image'] if posn < len(results_lhs) else None,
-            'prob_lhs': probas[posn][0],
+            'pref_lhs': probas[posn][0],
             'name_rhs': results_rhs.iloc[posn]['name'] if posn < len(results_rhs) else None,
+            'brand_name_rhs': results_rhs.iloc[posn]['brand_name'] if posn < len(results_rhs) else None,
+            'desc_rhs': results_rhs.iloc[posn]['description'] if posn < len(results_rhs) else None,
+            'backend_rhs': results_rhs.iloc[posn]['backend'] if posn < len(results_rhs) else None,
             'option_id_rhs': results_rhs.iloc[posn]['id'] if posn < len(results_rhs) else None,
             'image_url_rhs': results_rhs.iloc[posn]['main_image'] if posn < len(results_rhs) else None,
-            'prob_rhs': probas[posn][1],
+            'pref_rhs': probas[posn][1],
         }
         for feature_name, feature in features.items():
             if feature == 0:
@@ -210,18 +99,10 @@ def compare_results(model_path, query, results_lhs, results_rhs, cache, thresh=0
     return pd.DataFrame(result_rows)
 
 
-def get_results(query, dept="w"):
-    stag_user_id = "46467832-d7e9-43b9-9946-e0c00a1f7a76"
-    prod_user_id = "9c61d6a6-a5fa-4cb4-bde5-485fc3231ae3"
-    if dept == "m":
-        stag_user_id = "c9d43820-3c20-415a-8a43-059fe0385716"
-        prod_user_id = "aa58aa2a-6902-4c86-afdf-62fafdb4b9ac"
-
-    products_stag, search_settings_stag = products_for_msgs(stag_liaison(), es_stag, [query],
-                                                            stag_user_id)
-    products_prod, search_settings_prod = products_for_msgs(prod_liaison(), es_prod, [query],
-                                                            prod_user_id)
-    return products_stag, products_prod, search_settings_stag, search_settings_prod
+def get_results(query, dept, lhsEnv, rhsEnv):
+    products_lhs, search_settings_lhs = lhsEnv.search(query, dept)
+    products_rhs, search_settings_rhs = rhsEnv.search(query, dept)
+    return products_lhs, products_rhs, search_settings_lhs, search_settings_rhs
 
 
 def stag_vs_prod(queries, results_path="data/rated_queries.pkl"):
@@ -236,8 +117,8 @@ def stag_vs_prod(queries, results_path="data/rated_queries.pkl"):
         if isinstance(query, tuple):
             query, dept = query
         print(f"Processing Query: {query} - Department: {dept}")
-        stag, prod, ss_stag, ss_prod = get_results(query, dept)
-        df = compare_results(model, query, stag, prod, cache)
+        stag_results, prod_results, ss_stag, ss_prod = get_results(query, dept, stag, prod)
+        df = compare_results(model, query, stag_results, prod_results, cache)
         df['ss_lhs'] = json.dumps(ss_stag)
         df['ss_rhs'] = json.dumps(ss_prod)
         result_dfs.append(df)
