@@ -18,6 +18,7 @@ pillow = "^11.1.0"
 graphviz = "^0.20.3"
 google-cloud-secret-manager = "^2.22.1"
 liaison-client = {git = "ssh://git@github.com/dahlialabs/liaison.git", subdirectory = "sdks/python"}
+jupyter = "^1.1.1"
 
 
 [build-system]

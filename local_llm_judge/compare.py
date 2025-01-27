@@ -148,15 +148,26 @@ def get_results(query):
     return products_stag, products_prod
 
 
-if __name__ == "__main__":
+def stag_vs_prod(queries, results_path="data/rated_queries.pkl"):
     model = "data/both_ways_desc_both_ways_category_both_ways_captions_both_ways_brand_both_ways_all_fields.pkl"
-    queries = ["adidas sambas", "red adidas sambas",
-               "clutch purse", "blue clutch purse"]
     result_dfs = []
+    try:
+        result_dfs = [pd.read_pickle(results_path)]
+        print(f"Loaded {len(result_dfs[0])} results")
+        existing_queries = result_dfs[0]['query'].unique()
+        print(f"Skipping {len(existing_queries)} queries - {existing_queries}")
+        queries = [query for query in queries if query not in result_dfs[0]['query'].unique()]
+    except FileNotFoundError:
+        result_dfs = []
+    print(f"Comparing {len(queries)} queries")
     for query in queries:
         stag, prod = get_results(query)
         df = compare_results(model, query, stag, prod)
         result_dfs.append(df)
     results = pd.concat(result_dfs)
+    results.to_pickle(results_path)
+    return results
 
-    results.to_pickle("data/rated_queries.pkl")
+
+if __name__ == "__main__":
+    stag_vs_prod()

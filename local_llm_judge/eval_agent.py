@@ -3,6 +3,7 @@ import logging
 from functools import cache
 from local_llm_judge.qwen import Qwen, Agent
 from local_llm_judge.qwen_vlm import QwenImageModel
+from local_llm_judge.file_memoize import FileMemoizer
 
 
 logger = logging.getLogger(__name__)

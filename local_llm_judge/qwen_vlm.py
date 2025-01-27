@@ -18,4 +18,4 @@ class QwenImageModel:
             self.processor, self.config, prompt, num_images=1
         )
         return generate(self.model, self.processor, formatted_prompt, [image_path],
-                        verbose=True)
+                        verbose=False)
