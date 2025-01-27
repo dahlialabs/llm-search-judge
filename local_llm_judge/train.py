@@ -3,8 +3,11 @@ import pandas as pd
 import numpy as np
 import os
 from sklearn.tree import DecisionTreeClassifier
-from sklearn.tree import export_text
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.tree import export_text, export_graphviz
 import itertools
+import graphviz
+import pickle
 
 
 def preference_to_label(preference):
@@ -16,11 +19,21 @@ def preference_to_label(preference):
         return 0
 
 
+
+def visualize_tree(tree_model, feature_names):
+    dot_data = export_graphviz(tree_model, out_file=None,
+                               feature_names=feature_names,
+                               filled=True, rounded=True,
+                               special_characters=True)
+    graph = graphviz.Source(dot_data)
+    graph.view()
+
+
 def build_feature_df(feature_names):
     feature_df = None
     feature_columns = []
     for feature in feature_names:
-        df = pd.read_pickle(feature)[['query', 'product_id_lhs', 'product_id_rhs',
+        df = pd.read_pickle(feature)[['query', 'option_id_lhs', 'option_id_rhs',
                                       'agent_preference', 'human_preference']]
         feature_name = os.path.basename(feature).split(".")[0]
         feature_columns.append(feature_name)
@@ -28,7 +41,7 @@ def build_feature_df(feature_names):
         if feature_df is None:
             feature_df = df
         else:
-            feature_df = feature_df.merge(df, on=['query', 'product_id_lhs', 'product_id_rhs', 'human_preference'],
+            feature_df = feature_df.merge(df, on=['query', 'option_id_lhs', 'option_id_rhs', 'human_preference'],
                                           how='inner')
         feature_df[feature_name] = feature_df[feature_name].apply(preference_to_label)
     feature_df['human_preference'] = feature_df['human_preference'].apply(preference_to_label)
@@ -54,7 +67,7 @@ def train_tree(train, test, feature_columns):
     return clf, score
 
 
-def predict_tree(clf, test, feature_columns, threshold=0.9):
+def predict(clf, test, feature_columns, threshold=0.9):
     """Only assign LHS or RHS if the probability is above the threshold"""
     probas = clf.predict_proba(test[feature_columns])
     definitely_lhs = probas[:, 0] > threshold
@@ -69,10 +82,19 @@ def predict_tree(clf, test, feature_columns, threshold=0.9):
     )
     print(feature_columns)
     precision = same_label_when_pred.sum() / len(same_label_when_pred)
-    recall  = len(same_label_when_pred) / len(test)
+    recall = len(same_label_when_pred) / len(test)
     print(f"Precision: {precision} - Recall: {recall}")
 
     return predictions, feature_columns, precision, recall
+
+
+def train_gbt(train, test, feature_columns):
+    clf = GradientBoostingClassifier()
+    clf.fit(train[feature_columns],
+            train['human_preference'])
+    score = clf.score(test[feature_columns],
+                      test['human_preference'])
+    return clf, score
 
 
 def permute_features(feature_columns):
@@ -92,13 +114,31 @@ def main():
         train = feature_df.tail(len(feature_df) - args.num_test)
         test = feature_df.head(args.num_test)
         clf, score = train_tree(train, test, permutation)
-        _, _, precision, recall = predict_tree(clf, test, feature_columns=permutation)
-        results.append({'permutation': permutation, 'precision': precision, 'recall': recall})
-        print(f"Permutation: {permutation} - Score: {score}")
+        model_name = "_".join(permutation)
+        # Write to disk
+        model_path = f"data/model_{model_name}.pkl"
+        with open(model_path, 'wb') as f:
+            pickle.dump(clf, f)
+        _, _, precision, recall = predict(clf, test, feature_columns=permutation)
+        if recall > 0 and precision > 0:
+            visualize_tree(clf, permutation)
+        results.append({'permutation': permutation, 'precision': precision, 'recall': recall,
+                        'model_path': model_path})
+        # print(f"Permutation: {permutation} - Score: {score}")
     results_df = pd.DataFrame(results).sort_values('precision', ascending=False)
     for _, row in results_df.head(10).iterrows():
-        print(row['permutation'], row['precision'], row['recall'])
-    # print(export_text(clf, feature_names=feature_names))
+        if row['recall'] > 0:
+            print(row['model_path'])
+            print(row['permutation'], row['precision'], row['recall'])
+            visualize_tree(clf, feature_names)
+            # write to disk
+
+
+    train = feature_df.tail(len(feature_df) - args.num_test)
+    test = feature_df.head(args.num_test)
+    clf, score = train_gbt(train, test, feature_names)
+    _, _, precision, recall = predict(clf, test, feature_columns=feature_names)
+    print(f"Gradient Boosting: {precision} - {recall}")
 
 
 if __name__ == "__main__":

@@ -149,7 +149,13 @@ def main(eval_fn=eval_agent.unanimous_ensemble_name_desc,
         os.remove(f'data/{cache_key}.pkl')
     try:
         results_df = pd.read_pickle(f'data/{cache_key}.pkl')
+        if not isinstance(results_df, pd.DataFrame):
+            raise TypeError
     except FileNotFoundError:
+        pass
+    except TypeError:
+        logger.warn("Invalid type of file, going to overwrite")
+        results_df = pd.DataFrame()
         pass
 
     for idx, row in df.iterrows():
