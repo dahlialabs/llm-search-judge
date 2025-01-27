@@ -2,6 +2,7 @@ import pickle
 import argparse
 import os
 import pandas as pd
+import json
 import functools
 from google.cloud import secretmanager
 from google.protobuf import wrappers_pb2
@@ -53,6 +54,37 @@ def prod_liaison():
     return Client(config=liaison_config)
 
 
+def search_settings_proto_to_dict(search_settings_proto):
+    def _to_list(proto_list):
+        return [str(item) for item in proto_list]
+
+    def _filter_to_dict(filters):
+        return {
+            'brand': _to_list(filters.brand),
+            'color': _to_list(filters.color),
+            'department': _to_list(filters.department),
+            'material': _to_list(filters.material),
+            'tag': _to_list(filters.tag),
+            'category': _to_list(filters.category),
+            'option_id': _to_list(filters.option_id),
+        }
+
+    search_settings = {
+        "search_string": search_settings_proto.search_string,
+        "minimum_price": search_settings_proto.minimum_price,
+        "maximum_price": search_settings_proto.maximum_price,
+        "lexical_search": search_settings_proto.lexical_search,
+        "image_search": search_settings_proto.image_search,
+    }
+    positive_filters = search_settings_proto.positive_filters
+    if positive_filters:
+        search_settings["positive_filters"] = _filter_to_dict(positive_filters)
+    negative_filters = search_settings_proto.negative_filters
+    if negative_filters:
+        search_settings["negative_filters"] = _filter_to_dict(negative_filters)
+    return search_settings
+
+
 def products_for_msgs(liaison_client, es_client, user_messages, user_id="46467832-d7e9-43b9-9946-e0c00a1f7a76"):
     agent_resp = replay_chat(liaison_client, user_messages, user_id)
     chat_id = agent_resp.id
@@ -63,6 +95,7 @@ def products_for_msgs(liaison_client, es_client, user_messages, user_id="4646783
         )
     )
     listProductsReq.chat_search_context.search_settings.MergeFrom(agent_resp.search_settings)
+    search_settings_dict = search_settings_proto_to_dict(agent_resp.search_settings)
     result = liaison_client.product.list_product_cards(request=listProductsReq)
     ranked_options = []
     for product in result.products:
@@ -89,7 +122,28 @@ def products_for_msgs(liaison_client, es_client, user_messages, user_id="4646783
     extra_metadata = es_metadata(es_client, df['option_id'].tolist())
     df = df.merge(extra_metadata[['option_id', 'category']], on='option_id')
     df.rename(columns={'option_id': 'id', 'product_name': 'name', 'product_description': 'description'}, inplace=True)
-    return df
+    return df, search_settings_dict
+
+
+class FeatureCache:
+
+    def __init__(self):
+        self.path = "data/feature_cache.pkl"
+        try:
+            self.cache = pd.read_pickle(self.path)
+        except FileNotFoundError:
+            self.cache = {}
+        print(f"Loaded {len(self.cache)} cached option pair evals")
+
+    def compute_feature(self, feature_fn, feature_name, query, option_lhs, option_rhs):
+        key = (feature_name, query, option_lhs['id'], option_rhs['id'])
+        if key in self.cache:
+            return self.cache[key]
+        feature = feature_fn(query, option_lhs, option_rhs)
+        self.cache[key] = feature
+        with open(self.path, 'wb') as f:
+            pickle.dump(self.cache, f)
+        return feature
 
 
 def get_feature_fn(feature_name):
@@ -104,7 +158,7 @@ def get_feature_fn(feature_name):
     return eval_fn
 
 
-def compare_results(model_path, query, results_lhs, results_rhs, thresh=0.8):
+def compare_results(model_path, query, results_lhs, results_rhs, cache, thresh=0.8):
     model = None
     with open(model_path, 'rb') as f:
         model = pickle.load(f)
@@ -116,58 +170,77 @@ def compare_results(model_path, query, results_lhs, results_rhs, thresh=0.8):
     for (_, option_lhs), (_, option_rhs) in zip(results_lhs.iterrows(), results_rhs.iterrows()):
         row = {}
         for feature_name, feature_fn in zip(feature_names, feature_fns):
-            feature = feature_fn(query, option_lhs, option_rhs)
+            feature = cache.compute_feature(feature_fn, feature_name, query, option_lhs, option_rhs)
             row[feature_name] = preference_to_label(feature)
         features.append(row)
+
+    # Hack for now give all the features to the non-empty side
+    # Which will almost certainly let that side win
+    if len(results_lhs) > len(results_rhs):
+        for i in range(len(results_lhs) - len(results_rhs)):
+            features.append({feature_name: -1 for feature_name in feature_names})
+    elif len(results_rhs) > len(results_lhs):
+        for i in range(len(results_rhs) - len(results_lhs)):
+            features.append({feature_name: 1 for feature_name in feature_names})
+
     feature_df = pd.DataFrame(features)
     probas = model.predict_proba(feature_df)
     result_rows = []
     for posn in range(len(probas)):
+        features = feature_df.iloc[posn]
         result = {
             'query': query,
-            'name_lhs': results_lhs.iloc[posn]['name'],
-            'option_id_lhs': results_lhs.iloc[posn]['id'],
-            'image_url_lhs': results_lhs.iloc[posn]['main_image'],
+            'name_lhs': results_lhs.iloc[posn]['name'] if posn < len(results_lhs) else None,
+            'option_id_lhs': results_lhs.iloc[posn]['id'] if posn < len(results_lhs) else None,
+            'image_url_lhs': results_lhs.iloc[posn]['main_image'] if posn < len(results_lhs) else None,
             'prob_lhs': probas[posn][0],
-            'name_rhs': results_rhs.iloc[posn]['name'],
-            'option_id_rhs': results_rhs.iloc[posn]['id'],
-            'image_url_rhs': results_rhs.iloc[posn]['main_image'],
+            'name_rhs': results_rhs.iloc[posn]['name'] if posn < len(results_rhs) else None,
+            'option_id_rhs': results_rhs.iloc[posn]['id'] if posn < len(results_rhs) else None,
+            'image_url_rhs': results_rhs.iloc[posn]['main_image'] if posn < len(results_rhs) else None,
             'prob_rhs': probas[posn][1],
         }
+        for feature_name, feature in features.items():
+            if feature == 0:
+                result[feature_name] = 'Neither'
+            elif feature == -1:
+                result[feature_name] = 'LHS'
+            elif feature == 1:
+                result[feature_name] = 'RHS'
         result_rows.append(result)
     return pd.DataFrame(result_rows)
 
 
-def get_results(query):
+def get_results(query, dept="w"):
     stag_user_id = "46467832-d7e9-43b9-9946-e0c00a1f7a76"
-    products_stag = products_for_msgs(stag_liaison(), es_stag, [query],
-                                      stag_user_id)
     prod_user_id = "9c61d6a6-a5fa-4cb4-bde5-485fc3231ae3"
-    products_prod = products_for_msgs(prod_liaison(), es_prod, [query],
-                                      prod_user_id)
-    return products_stag, products_prod
+    if dept == "m":
+        stag_user_id = "c9d43820-3c20-415a-8a43-059fe0385716"
+        prod_user_id = "aa58aa2a-6902-4c86-afdf-62fafdb4b9ac"
+
+    products_stag, search_settings_stag = products_for_msgs(stag_liaison(), es_stag, [query],
+                                                            stag_user_id)
+    products_prod, search_settings_prod = products_for_msgs(prod_liaison(), es_prod, [query],
+                                                            prod_user_id)
+    return products_stag, products_prod, search_settings_stag, search_settings_prod
 
 
 def stag_vs_prod(queries, results_path="data/rated_queries.pkl"):
+
+    cache = FeatureCache()
     model = "data/both_ways_desc_both_ways_category_both_ways_captions_both_ways_brand_both_ways_all_fields.pkl"
-    result_dfs = []
-    try:
-        result_dfs = [pd.read_pickle(results_path)]
-        print(f"Loaded {len(result_dfs[0])} results")
-        existing_queries = result_dfs[0]['query'].unique()
-        print(f"Skipping {len(existing_queries)} queries - {existing_queries}")
-        queries = [query for query in queries if query not in result_dfs[0]['query'].unique()]
-    except FileNotFoundError:
-        result_dfs = []
     print(f"Comparing {len(queries)} queries")
+    result_dfs = []
     for query in queries:
-        stag, prod = get_results(query)
-        df = compare_results(model, query, stag, prod)
+        dept = 'w'
+        # If tuple
+        if isinstance(query, tuple):
+            query, dept = query
+        print(f"Processing Query: {query} - Department: {dept}")
+        stag, prod, ss_stag, ss_prod = get_results(query, dept)
+        df = compare_results(model, query, stag, prod, cache)
+        df['ss_lhs'] = json.dumps(ss_stag)
+        df['ss_rhs'] = json.dumps(ss_prod)
         result_dfs.append(df)
     results = pd.concat(result_dfs)
     results.to_pickle(results_path)
     return results
-
-
-if __name__ == "__main__":
-    stag_vs_prod()
