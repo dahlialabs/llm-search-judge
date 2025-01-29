@@ -3,6 +3,9 @@
 export STAG_CLUSTER="gke_dahlia-infra-stag_us-central1_dahlia-stag-us-central1-gke"
 export PROD_CLUSTER="gke_dahlia-infra-prod_us-central1_dahlia-prod-us-central1-gke"
 
+kubectl --cluster="$STAG_CLUSTER" --namespace=daydream port-forward pods/inference-server-7977dd6444-5z9q5 10001:8080 &
+KUBECTL_INF_STAG_PID=$!
+
 # Proxy staging weaviate
 # HTTP - 8080 -> local 8081
 # GRPC - 50051 -> local 50052
@@ -21,6 +24,7 @@ export ELASTICSEARCH_PROD_PASSWORD=$(kubectl --cluster="$PROD_CLUSTER" get secre
 function cleanup {
     kill $KUBECTL_ES_STAG_PID
     kill $KUBECTL_ES_PROD_PID
+    kill $KUBECTL_INF_STAG_PID
 
     # Clear trap
     trap - SIGINT SIGTERM EXIT

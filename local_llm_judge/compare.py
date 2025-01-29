@@ -2,25 +2,31 @@ import pickle
 import pandas as pd
 import json
 import functools
+import logging
 
 from local_llm_judge import eval_agent
 from local_llm_judge.train import preference_to_label
-from local_llm_judge.search_backend import stag, prod
+from local_llm_judge.search_backend import stag, prod, local, stag_cached, prod_cached, local_es
+
+
+log = logging.getLogger(__name__)
 
 
 class FeatureCache:
+    """Remember the LLM evals we've already computed"""
 
-    def __init__(self):
+    def __init__(self, overwrite=False):
+        self.overwrite = overwrite
         self.path = "data/feature_cache.pkl"
         try:
             self.cache = pd.read_pickle(self.path)
         except FileNotFoundError:
             self.cache = {}
-        print(f"Loaded {len(self.cache)} cached option pair evals")
+        log.info(f"Loaded {len(self.cache)} cached option pair evals")
 
     def compute_feature(self, feature_fn, feature_name, query, option_lhs, option_rhs):
         key = (feature_name, query, option_lhs['id'], option_rhs['id'])
-        if key in self.cache:
+        if key in self.cache and not self.overwrite:
             return self.cache[key]
         feature = feature_fn(query, option_lhs, option_rhs)
         self.cache[key] = feature
@@ -41,14 +47,9 @@ def get_feature_fn(feature_name):
     return eval_fn
 
 
-def compare_results(model_path, query, results_lhs, results_rhs, cache, thresh=0.8):
-    model = None
-    with open(model_path, 'rb') as f:
-        model = pickle.load(f)
-    feature_names = model.feature_names_in_
-    feature_fns = [get_feature_fn(feature_name) for feature_name in feature_names]
-
+def _build_feature_df(cache, feature_names, query, results_lhs, results_rhs):
     # Build a dataframe of each feature
+    feature_fns = [get_feature_fn(feature_name) for feature_name in feature_names]
     features = []
     for (_, option_lhs), (_, option_rhs) in zip(results_lhs.iterrows(), results_rhs.iterrows()):
         row = {}
@@ -67,14 +68,28 @@ def compare_results(model_path, query, results_lhs, results_rhs, cache, thresh=0
             features.append({feature_name: 1 for feature_name in feature_names})
 
     feature_df = pd.DataFrame(features)
+    return feature_df
+
+
+def compare_results(model_path, query, results_lhs, results_rhs, cache, thresh=0.8):
+    model = None
+    with open(model_path, 'rb') as f:
+        model = pickle.load(f)
+    feature_names = model.feature_names_in_
+    feature_df = _build_feature_df(cache, feature_names, query, results_lhs, results_rhs)
+
+    # Predict
     probas = model.predict_proba(feature_df)
     result_rows = []
+
+    # Report on output
     for posn in range(len(probas)):
         features = feature_df.iloc[posn]
         result = {
             'query': query,
             'name_lhs': results_lhs.iloc[posn]['name'] if posn < len(results_lhs) else None,
             'brand_name_lhs': results_lhs.iloc[posn]['brand_name'] if posn < len(results_lhs) else None,
+            'category_lhs': results_lhs.iloc[posn]['category'] if posn < len(results_lhs) else None,
             'desc_lhs': results_lhs.iloc[posn]['description'] if posn < len(results_lhs) else None,
             'backend_lhs': results_lhs.iloc[posn]['backend'] if posn < len(results_lhs) else None,
             'option_id_lhs': results_lhs.iloc[posn]['id'] if posn < len(results_lhs) else None,
@@ -83,6 +98,7 @@ def compare_results(model_path, query, results_lhs, results_rhs, cache, thresh=0
             'name_rhs': results_rhs.iloc[posn]['name'] if posn < len(results_rhs) else None,
             'brand_name_rhs': results_rhs.iloc[posn]['brand_name'] if posn < len(results_rhs) else None,
             'desc_rhs': results_rhs.iloc[posn]['description'] if posn < len(results_rhs) else None,
+            'category_rhs': results_rhs.iloc[posn]['category'] if posn < len(results_rhs) else None,
             'backend_rhs': results_rhs.iloc[posn]['backend'] if posn < len(results_rhs) else None,
             'option_id_rhs': results_rhs.iloc[posn]['id'] if posn < len(results_rhs) else None,
             'image_url_rhs': results_rhs.iloc[posn]['main_image'] if posn < len(results_rhs) else None,
@@ -99,29 +115,52 @@ def compare_results(model_path, query, results_lhs, results_rhs, cache, thresh=0
     return pd.DataFrame(result_rows)
 
 
-def get_results(query, dept, lhsEnv, rhsEnv):
+def fetch_results(query, dept, lhsEnv, rhsEnv):
     products_lhs, search_settings_lhs = lhsEnv.search(query, dept)
+    if len(products_lhs) == 0:
+        log.warn(f"No results for query: {query} - Department: {dept} from {lhsEnv.name}")
+
     products_rhs, search_settings_rhs = rhsEnv.search(query, dept)
+    if len(products_rhs) == 0:
+        log.warn(f"No results for query: {query} - Department: {dept} from {rhsEnv.name}")
+
     return products_lhs, products_rhs, search_settings_lhs, search_settings_rhs
 
 
-def stag_vs_prod(queries, results_path="data/rated_queries.pkl"):
+def env_string_to_backend(env):
+    if env == 'stag':
+        return stag
+    elif env == 'prod':
+        return prod
+    elif env == 'local':
+        return local
+    elif env == 'cached_stag':
+        return stag_cached
+    elif env == 'cached_prod':
+        return prod_cached
+    elif env == 'local_es':
+        return local_es
 
-    cache = FeatureCache()
+    raise ValueError(f"Unknown environment: {env}")
+
+
+def compare_env(queries, env_lhs, env_rhs, overwrite_feature_cache=False):
+    cache = FeatureCache(overwrite=overwrite_feature_cache)
     model = "data/both_ways_desc_both_ways_category_both_ways_captions_both_ways_brand_both_ways_all_fields.pkl"
-    print(f"Comparing {len(queries)} queries")
+    log.info(f"Comparing {len(queries)} queries")
     result_dfs = []
+    lhs_backend = env_string_to_backend(env_lhs)
+    rhs_backend = env_string_to_backend(env_rhs)
     for query in queries:
         dept = 'w'
         # If tuple
         if isinstance(query, tuple):
             query, dept = query
-        print(f"Processing Query: {query} - Department: {dept}")
-        stag_results, prod_results, ss_stag, ss_prod = get_results(query, dept, stag, prod)
+        log.info(f"Processing Query: {query} - Department: {dept}")
+        stag_results, prod_results, ss_stag, ss_prod = fetch_results(query, dept, lhs_backend, rhs_backend)
         df = compare_results(model, query, stag_results, prod_results, cache)
         df['ss_lhs'] = json.dumps(ss_stag)
         df['ss_rhs'] = json.dumps(ss_prod)
         result_dfs.append(df)
     results = pd.concat(result_dfs)
-    results.to_pickle(results_path)
     return results
