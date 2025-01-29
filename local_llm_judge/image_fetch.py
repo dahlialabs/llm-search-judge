@@ -1,5 +1,5 @@
 import requests
-import PIL
+import PIL.Image
 import io
 import os
 

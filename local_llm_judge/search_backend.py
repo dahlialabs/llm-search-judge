@@ -7,6 +7,8 @@ import pickle
 import requests
 import logging
 
+import json
+
 from google.cloud import secretmanager
 from google.protobuf import wrappers_pb2
 
@@ -47,8 +49,6 @@ except FileNotFoundError:
 
 
 def _inference(inference_uri, text: str):
-    if text in inference_cache:
-        return inference_cache[text]
     response = requests.post(inference_uri,
                              json={'texts': [text]})
     textVector = response.json()['textVectors'][0]
@@ -258,7 +258,7 @@ def search_template_params(
     min_price: int = 0,
     max_price: int = 1000000,
     sizes: Optional[list[str]] = None,
-    image_search: Optional[list[float]] = None,
+    image_vector: Optional[list[float]] = None,
 ) -> dict[str, Any]:  # pylint: disable=too-many-arguments
     """Returns a dictionary of search template parameters."""
 
@@ -276,8 +276,8 @@ def search_template_params(
         params["categories"] = _filter_params(categories)
     if sizes:
         params["sizes"] = _filter_params(sizes)
-    if image_search:
-        params["image_search"] = image_search
+    if image_vector:
+        params["image_vector"] = json.dumps(image_vector)
     if min_price != max_price:
         params["min_price"] = str(min_price)
         params["max_price"] = str(max_price)
@@ -325,7 +325,7 @@ def es_prods_from_msgs(liaison_client, es_client,
 
     params = search_template_params(
         keywords=keywords,
-        image_search=image_embedding,
+        image_vector=image_embedding,
         brands=search_settings_dict.get("positive_filters", {}).get("brand", []),
         departments=search_settings_dict.get("positive_filters", {}).get("department", []),
         categories=search_settings_dict.get("positive_filters", {}).get("category", []),
@@ -338,6 +338,8 @@ def es_prods_from_msgs(liaison_client, es_client,
         index='option',
         body={"id": "my-search-template", "params": params},
     )
+    rendered = es_client.render_search_template(id="my-search-template",
+                                                body={"params": params})['template_output']
 
     ranked_options = []
     for hit in matches['hits']['hits']:
@@ -363,7 +365,7 @@ def es_prods_from_msgs(liaison_client, es_client,
 
     df = pd.DataFrame(ranked_options)
     df.rename(columns={'option_id': 'id', 'product_name': 'name', 'product_description': 'description'}, inplace=True)
-    return df, search_settings_dict
+    return df, search_settings_dict, rendered
 
 
 class ElasticsearchSearchBackend:
@@ -374,13 +376,15 @@ class ElasticsearchSearchBackend:
         self.inference_uri = inference_uri
         self.user_ids = user_ids
         self.name = name
+        self.last_rendered = None
 
     def search(self, user_messages, dept):
         user_id = self.user_ids[dept]
-        products, search_settings = es_prods_from_msgs(self.liaison_client, self.es_client,
-                                                       self.inference_uri,
-                                                       user_messages, user_id)
+        products, search_settings, rendered = es_prods_from_msgs(self.liaison_client, self.es_client,
+                                                                 self.inference_uri,
+                                                                 user_messages, user_id)
         products['backend'] = self.name
+        self.last_rendered = rendered
         return products, search_settings
 
 
