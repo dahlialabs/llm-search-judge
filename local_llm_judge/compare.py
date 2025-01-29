@@ -28,6 +28,7 @@ class FeatureCache:
         key = (feature_name, query, option_lhs['id'], option_rhs['id'])
         if key in self.cache and not self.overwrite:
             return self.cache[key]
+        log.info(f"Computing uncached feature: {feature_name} for {query} - {option_lhs['id']} vs {option_rhs['id']}")
         feature = feature_fn(query, option_lhs, option_rhs)
         self.cache[key] = feature
         with open(self.path, 'wb') as f:

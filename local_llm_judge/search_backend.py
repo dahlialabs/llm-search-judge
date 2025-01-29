@@ -127,7 +127,18 @@ def search_settings_proto_to_dict(search_settings_proto):
 
 def liaison_prods_from_msgs(liaison_client, es_client, user_messages, user_id,
                             N=10):
-    agent_resp = replay_chat(liaison_client, user_messages, user_id)
+    agent_resp = None
+    last_error = None
+    for i in range(3):
+        try:
+            agent_resp = replay_chat(liaison_client, user_messages, user_id)
+            break
+        except RpcError as e:
+            logger.warning(f"Error replaying chat: {e}. Retrying...")
+            last_error = e
+            continue
+    if not agent_resp:
+        raise ValueError("Failed to replay chat") from last_error
     chat_id = agent_resp.id
     listProductsReq = product_pb2.ListProductCardsRequest(
         page_size=10,
@@ -158,7 +169,7 @@ def liaison_prods_from_msgs(liaison_client, es_client, user_messages, user_id,
                 "option_id": option.id,
                 "main_image": main_image_url,
                 'main_image_path': fetch_and_resize(main_image_url, option.id),
-                "product_description": description,
+                "product_description": description
             })
             if len(ranked_options) >= N:
                 break
@@ -259,6 +270,10 @@ def search_template_params(
     max_price: int = 1000000,
     sizes: Optional[list[str]] = None,
     image_vector: Optional[list[float]] = None,
+    brand_ages: Optional[list[str]] = None,
+    brand_aesthetics: Optional[list[str]] = None,
+    brand_occasions: Optional[list[str]] = None,
+    brand_prices: Optional[list[str]] = None,
 ) -> dict[str, Any]:  # pylint: disable=too-many-arguments
     """Returns a dictionary of search template parameters."""
 
@@ -270,6 +285,14 @@ def search_template_params(
     }
     if brands:
         params["brands"] = _filter_params(brands)
+    if brand_ages:
+        params["brand_ages"] = _filter_params(brand_ages)
+    if brand_aesthetics:
+        params["brand_aesthetics"] = _filter_params(brand_aesthetics)
+    if brand_occasions:
+        params["brand_occasions"] = _filter_params(brand_occasions)
+    if brand_prices:
+        params["brand_prices"] = _filter_params(brand_prices)
     if departments:
         params["departments"] = _filter_params(departments)
     if categories:
@@ -295,6 +318,35 @@ def option_details(liaison_client, option_id):
     except RpcError as e:
         logger.error(f"Error fetching option details for {option_id}: {e}")
         return None
+
+
+def user_msgs_to_price(user_messages):
+    actual_price_tags = ["budget", "moderate", "mid-range", "luxury"]
+    mapping = {v: v for v in actual_price_tags}
+    mapping["cheap"] = "budget"
+    mapping["affordable"] = "moderate"
+    mapping["pricey"] = "luxury"
+    mapping["fancy"] = "luxury"
+
+    for msg in user_messages:
+        for tag in actual_price_tags:
+            if tag.lower() in msg.lower().split():
+                logger.info(f"Applying brand price tag: {tag}")
+                return tag
+    return None
+
+
+def user_msgs_to_age(user_messages):
+    actual_age_tags = ["Boomer", "GenX", "Millenial", "GenZ"]
+    mapping = {v: v for v in actual_age_tags}
+    mapping["old"] = "Boomer"
+    mapping["young"] = "GenZ"
+
+    for msg in user_messages:
+        for tag in actual_age_tags:
+            if tag.lower() in msg.lower().split():
+                logger.info(f"Applying brand age tag: {tag}")
+                return tag
 
 
 def es_prods_from_msgs(liaison_client, es_client,
@@ -323,6 +375,14 @@ def es_prods_from_msgs(liaison_client, es_client,
     if 'lexical_search' in search_settings_dict:
         keywords = search_settings_dict['lexical_search']
 
+    brand_ages = [user_msgs_to_age(user_messages)]
+    if brand_ages[0] is None:
+        brand_ages = None
+
+    brand_prices = [user_msgs_to_price(user_messages)]
+    if brand_prices[0] is None:
+        brand_prices = None
+
     params = search_template_params(
         keywords=keywords,
         image_vector=image_embedding,
@@ -331,6 +391,8 @@ def es_prods_from_msgs(liaison_client, es_client,
         categories=search_settings_dict.get("positive_filters", {}).get("category", []),
         min_price=search_settings_dict["minimum_price"],
         max_price=search_settings_dict["maximum_price"],
+        brand_ages=brand_ages,
+        brand_prices=brand_prices,
         sizes=[],
     )
 
@@ -359,6 +421,7 @@ def es_prods_from_msgs(liaison_client, es_client,
             "main_image": main_image,
             "main_image_path": fetch_and_resize(main_image, option_id) if main_image else None,
             "product_description": hit['_source']['description'],
+            "score": hit['_score']
         })
         if len(ranked_options) >= N:
             break
@@ -380,6 +443,8 @@ class ElasticsearchSearchBackend:
 
     def search(self, user_messages, dept):
         user_id = self.user_ids[dept]
+        if isinstance(user_messages, str):
+            user_messages = [user_messages]
         products, search_settings, rendered = es_prods_from_msgs(self.liaison_client, self.es_client,
                                                                  self.inference_uri,
                                                                  user_messages, user_id)
