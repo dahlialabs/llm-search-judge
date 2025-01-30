@@ -1859,28 +1859,6 @@ files = [
 ]
 
 [[package]]
-name = "liaison-client"
-version = "0.37.0"
-description = "Python client implementation for Liaison API"
-optional = false
-python-versions = ">=3.12.0, <3.13"
-groups = ["main"]
-files = []
-develop = false
-
-[package.dependencies]
-grpcio = "^1.63.0"
-protobuf = "^5.26.1"
-pydantic = "^2.7.1"
-
-[package.source]
-type = "git"
-url = "ssh://git@github.com/dahlialabs/liaison.git"
-reference = "HEAD"
-resolved_reference = "d1577ef8cad0b5ed66dc40b6a589ee38d5059f93"
-subdirectory = "sdks/python"
-
-[[package]]
 name = "markdown-it-py"
 version = "3.0.0"
 description = "Python port of markdown-it. Markdown parsing, done right!"
@@ -4919,5 +4897,5 @@ propcache = ">=0.2.0"
 
 [metadata]
 lock-version = "2.1"
-python-versions = ">=3.12.3,<3.13"
-content-hash = "47f74c262ac37a2e5f0ac5e9d0ee1ca5c2a1c8664af7605980c7ad7cd6cef6e7"
+python-versions = ">=3.12.0,<3.13"
+content-hash = "a646025ef8c22d9aab1d6cdd085131ee097f36ac649c3cca4d44a0c35382317c"
