@@ -1,6 +1,6 @@
 #!/bin/bash
 
-N="${1:-7000}"
+N="${1:-20000}"
 
 poetry run python -m local_llm_judge.main --verbose --eval-fn captions --check-both-ways --N $N
 

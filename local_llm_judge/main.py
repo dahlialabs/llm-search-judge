@@ -75,11 +75,14 @@ def product_row_to_dict(row):
         }
 
 
-def output_row(query, product_lhs, product_rhs, human_preference, agent_preference):
+def output_row(query, product_lhs, product_rhs,
+               positive_lhs, positive_rhs,
+               human_preference, agent_preference):
     return {
         'query': query,
         'product_name_lhs': product_lhs['name'],
         'brand_name_lhs': product_lhs['brand_name'],
+        'positive_lhs': positive_lhs,
         'product_description_lhs': product_lhs['description'],
         'option_id_lhs': product_lhs['id'],
         'category_lhs': product_lhs['category'],
@@ -91,6 +94,7 @@ def output_row(query, product_lhs, product_rhs, human_preference, agent_preferen
         'product_description_rhs': product_rhs['description'],
         'option_id_rhs': product_rhs['id'],
         'category_rhs': product_rhs['category'],
+        'positive_rhs': positive_rhs,
         'main_image_rhs': product_rhs['main_image'],
         'main_image_path_rhs': product_rhs['main_image_path'],
         'grade_rhs': product_rhs['grade'],
@@ -145,10 +149,14 @@ def main(eval_fn=eval_agent.unanimous_ensemble_name_desc,
     df = pairwise_df(N, seed)
     cache_key = args.cache_key
     results_df = pd.DataFrame()
-    if destroy_cache and os.path.exists(f'data/{cache_key}.pkl'):
+    if destroy_cache and os.path.exists(f'data/features/{cache_key}.pkl'):
         os.remove(f'data/{cache_key}.pkl')
     try:
-        results_df = pd.read_pickle(f'data/{cache_key}.pkl')
+        results_df = pd.read_pickle(f'data/features/{cache_key}.pkl')
+        if 'positive_lhs' not in results_df.columns:
+            results_df['positive_lhs'] = True
+        if 'positive_rhs' not in results_df.columns:
+            results_df['positive_rhs'] = True
         if not isinstance(results_df, pd.DataFrame):
             raise TypeError
     except FileNotFoundError:
@@ -160,6 +168,8 @@ def main(eval_fn=eval_agent.unanimous_ensemble_name_desc,
 
     for idx, row in df.iterrows():
         query = " ".join(row['user_messages_x'])
+        positive_lhs = row['positive_x']
+        positive_rhs = row['positive_y']
         product_lhs = product_row_to_dict(row[['product_name_x', 'product_description_x',
                                                'brand_name_x', 'main_image_x',
                                                'option_id_x', 'category_x', 'grade_x']])
@@ -172,16 +182,20 @@ def main(eval_fn=eval_agent.unanimous_ensemble_name_desc,
             logger.info("Skipping")
             continue
         human_preference = human_pref(query, product_lhs, product_rhs)
+        logger.info(f"CALLING {cache_key} LLM for query: {query}, " +
+                    f"product_lhs({positive_lhs}): {product_lhs['name']}, product_rhs({positive_rhs}): {product_rhs['name']}")
         agent_preference = eval_fn(query, product_lhs, product_rhs)
         if agent_preference != 'Neither' and human_preference != agent_preference:
             logger.warning(f"Disagreement - Human Preference: {human_preference}, Agent Preference: {agent_preference}")
         logger.info(f"Human Preference: {human_preference}, Agent Preference: {agent_preference}")
 
-        results_df = pd.concat([results_df, pd.DataFrame([output_row(query, product_lhs, product_rhs, human_preference,
+        results_df = pd.concat([results_df, pd.DataFrame([output_row(query, product_lhs, product_rhs,
+                                                                     positive_lhs, positive_rhs,
+                                                                     human_preference,
                                                                      agent_preference)])])
         results_df_stats(results_df)
 
-        results_df.to_pickle(f'data/{cache_key}.pkl')
+        results_df.to_pickle(f'data/features/{cache_key}.pkl')
     results_df_stats(results_df)
 
 

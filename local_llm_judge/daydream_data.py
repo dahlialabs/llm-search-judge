@@ -1,4 +1,11 @@
 import pandas as pd
+import numpy as np
+
+from local_llm_judge.image_fetch import fetch_and_resize
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def _build_pairwise_df(labeled_df, n, seed=42):
@@ -19,6 +26,7 @@ def _build_pairwise_df(labeled_df, n, seed=42):
     pairwise = pairwise[pairwise['grade_x'] != pairwise['grade_y']]
 
     assert n <= len(pairwise), f"Only {len(pairwise)} rows available"
+    logger.info(f"Pairs available: {len(pairwise)}")
     return pairwise.head(n)
 
 
@@ -30,9 +38,55 @@ def _img_proxy_url(img_url):
     return img_proxy
 
 
-def pairwise_df(n, seed=42):
+def pairwise_df(n, seed=42, sample_negatives=True):
     labeled_df = pd.read_parquet('data/labeled_options.parquet')
     # labeled_df['main_image'] = labeled_df['main_image'].apply(_img_proxy_url)
     labeled_df.rename(columns={'description': 'product_description', 'rating': 'grade'}, inplace=True)
+    for option_id in labeled_df[~labeled_df['main_image'].isna()]['option_id'].unique():
+        image_url = labeled_df[labeled_df['option_id'] == option_id]['main_image'].iloc[0]
+        fetch_and_resize(image_url, option_id)
     labeled_df.drop_duplicates(subset=['query_id', 'option_id'], inplace=True)
-    return _build_pairwise_df(labeled_df, n, seed)
+    labeled_df['positive'] = True
+    labeled_df['user_messages_concat'] = labeled_df['user_messages'].apply(lambda x: " ".join(x))
+
+    # The user messages of this id look like the agent is speaking, not the user
+    bad_query_ids = ['3dbe47dd-09f1-425a-a430-a7e53d376f5d']
+    labeled_df = labeled_df[~labeled_df['query_id'].isin(bad_query_ids)]
+
+    if sample_negatives:
+        # Others positives as my negatives to give obvious negative cases
+        good_results = labeled_df[labeled_df['grade'] == 5].set_index('query_id')
+        neg_labels = []
+        for query_id in labeled_df['query_id'].unique():
+            if query_id not in good_results.index:
+                continue
+            dest_query = labeled_df[labeled_df['query_id'] == query_id].copy()
+            other_query_results = good_results[good_results.index != query_id].copy().reset_index()
+            other_query_results = other_query_results.sample(frac=1, random_state=seed)
+
+            other_query_results = other_query_results[~other_query_results['query_id'].isna()]
+            other_query_results.loc[:, 'query_id'] = other_query_results['query_id'].astype(str)
+            other_query_results.loc[:, 'grade'] = np.int64(1)
+            other_query_results.loc[:, 'query_id'] = str(query_id)
+            # other_query_results.loc[: 'user_messages'] = dest_query['user_messages'].iloc[0]
+            # ASsign list of user_messages with tile
+            my_msgs = other_query_results.apply(lambda x: dest_query['user_messages'].iloc[0], axis=1)
+            other_query_results['user_messages'] = my_msgs
+
+            logger.debug(f"New Negative {other_query_results.iloc[0]}")
+
+            neg_labels.append(other_query_results)
+
+        neg_labels_df = pd.concat(neg_labels).sample(frac=1, random_state=seed)
+        neg_labels_df = neg_labels_df[~neg_labels_df['main_image'].isna()]
+        neg_labels_df = neg_labels_df.head(400)
+        neg_labels_df['positive'] = False
+
+        # Get some example negatives to log
+        logger.info(f"Example negative {neg_labels_df.iloc[10]}")
+
+        labeled_df = pd.concat([labeled_df, neg_labels_df])
+
+    pairs = _build_pairwise_df(labeled_df, n, seed)
+    logger.info(f"Returning {len(pairs)} pairs")
+    return pairs

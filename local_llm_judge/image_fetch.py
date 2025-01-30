@@ -15,7 +15,7 @@ def fetch_and_resize(url, option_id, width=512, height=1024, dest='~/.local-llm-
         os.makedirs(dest)
 
     if os.path.exists(f"{dest}/{option_id}.png"):
-        logger.debug(f"Image {option_id}.png already exists, returning path")
+        logger.debug(f"Image {dest}/{option_id}.png already exists, returning path")
         return f"{dest}/{option_id}.png"
 
     logger.debug(f"Fetching image from {url} for option {option_id}")
