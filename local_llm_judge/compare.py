@@ -3,6 +3,7 @@ import pandas as pd
 import json
 import functools
 import logging
+import os
 
 from local_llm_judge import eval_agent
 from local_llm_judge.train import preference_to_label
@@ -19,6 +20,7 @@ class FeatureCache:
     def __init__(self, overwrite=False):
         self.overwrite = overwrite
         self.path = "~/.local-llm-judge/feature_cache.pkl"
+        self.path = os.path.expanduser(self.path)
         try:
             self.cache = pd.read_pickle(self.path)
         except FileNotFoundError:
