@@ -4,9 +4,10 @@ import io
 import os
 
 
-def fetch_and_resize(url, option_id, width=512, height=1024, dest='data/img'):
+def fetch_and_resize(url, option_id, width=512, height=1024, dest='~/.local-llm-judge/img/'):
     if url is None:
         return None
+    dest = os.path.expanduser(dest)
     if not os.path.exists(dest):
         os.makedirs(dest)
 

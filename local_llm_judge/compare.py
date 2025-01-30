@@ -6,7 +6,8 @@ import logging
 
 from local_llm_judge import eval_agent
 from local_llm_judge.train import preference_to_label
-from local_llm_judge.search_backend import stag, prod, local, stag_cached, prod_cached, local_es
+# from local_llm_judge.search_backend import stag, prod, local, stag_cached, prod_cached, local_es
+from local_llm_judge.image_fetch import fetch_and_resize
 
 
 log = logging.getLogger(__name__)
@@ -17,7 +18,7 @@ class FeatureCache:
 
     def __init__(self, overwrite=False):
         self.overwrite = overwrite
-        self.path = "data/feature_cache.pkl"
+        self.path = "~/.local-llm-judge/feature_cache.pkl"
         try:
             self.cache = pd.read_pickle(self.path)
         except FileNotFoundError:
@@ -116,50 +117,42 @@ def compare_results(model_path, query, results_lhs, results_rhs, cache, thresh=0
     return pd.DataFrame(result_rows)
 
 
+def fetch_images(search_results):
+    for _, row in search_results.iterrows():
+        if row['main_image'] is None:
+            continue
+        if row['main_image_path'] is not None:
+            continue
+        row['main_image_path'] = fetch_and_resize(row['main_image'], row['option_id'])
+
+
 def fetch_results(query, dept, lhsEnv, rhsEnv):
     products_lhs, search_settings_lhs = lhsEnv.search(query, dept)
+    fetch_images(products_lhs)
     if len(products_lhs) == 0:
         log.warn(f"No results for query: {query} - Department: {dept} from {lhsEnv.name}")
 
     products_rhs, search_settings_rhs = rhsEnv.search(query, dept)
+    fetch_images(products_rhs)
     if len(products_rhs) == 0:
         log.warn(f"No results for query: {query} - Department: {dept} from {rhsEnv.name}")
 
     return products_lhs, products_rhs, search_settings_lhs, search_settings_rhs
 
 
-def env_string_to_backend(env):
-    if env == 'stag':
-        return stag
-    elif env == 'prod':
-        return prod
-    elif env == 'local':
-        return local
-    elif env == 'cached_stag':
-        return stag_cached
-    elif env == 'cached_prod':
-        return prod_cached
-    elif env == 'local_es':
-        return local_es
-
-    raise ValueError(f"Unknown environment: {env}")
-
-
-def compare_env(queries, env_lhs, env_rhs, overwrite_feature_cache=False):
+def compare_env(model_path, queries, backend_lhs, backend_rhs, overwrite_feature_cache=False):
     cache = FeatureCache(overwrite=overwrite_feature_cache)
-    model = "data/both_ways_desc_both_ways_category_both_ways_captions_both_ways_brand_both_ways_all_fields.pkl"
+    # model = "data/both_ways_desc_both_ways_category_both_ways_captions_both_ways_brand_both_ways_all_fields.pkl"
     log.info(f"Comparing {len(queries)} queries")
     result_dfs = []
-    lhs_backend = env_string_to_backend(env_lhs)
-    rhs_backend = env_string_to_backend(env_rhs)
     for query in queries:
         dept = 'w'
         # If tuple
         if isinstance(query, tuple):
             query, dept = query
         log.info(f"Processing Query: {query} - Department: {dept}")
-        stag_results, prod_results, ss_stag, ss_prod = fetch_results(query, dept, lhs_backend, rhs_backend)
-        df = compare_results(model, query, stag_results, prod_results, cache)
+        stag_results, prod_results, ss_stag, ss_prod = fetch_results(query, dept, backend_lhs, backend_rhs)
+        df = compare_results(model_path, query, stag_results, prod_results, cache)
         df['ss_lhs'] = json.dumps(ss_stag)
         df['ss_rhs'] = json.dumps(ss_prod)
         result_dfs.append(df)

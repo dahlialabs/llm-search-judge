@@ -18,7 +18,6 @@ from liaison_client.helpers import replay_chat
 from liaison_client.exceptions import RpcError
 
 from local_llm_judge.es_metadata import es_metadata, es_stag, es_prod
-from local_llm_judge.image_fetch import fetch_and_resize
 
 ## ALL SEARCH BAKEND CODE EXPECTS TO BE RUN
 ## AFTER source ./connect.sh and its various port fwds
@@ -347,6 +346,54 @@ def user_msgs_to_age(user_messages):
             if tag.lower() in msg.lower().split():
                 logger.info(f"Applying brand age tag: {tag}")
                 return tag
+    return None
+
+
+def user_msgs_to_aesthetic(user_messages):
+    actual_aes = ['athleisure', 'avant garde', 'boho', 'casual', 'classic',
+                  'country club', 'edgy', 'feminine', 'femme', 'formal',
+                  'minimalist', 'modern', 'performance wear', 'romantic',
+                  'sexy', 'sporty', 'streetwear', 'varied']
+    mapping = {v: v for v in actual_aes}
+    mapping['athletic'] = 'athleisure'
+    mapping['athletic wear'] = 'athleisure'
+    mapping['athleisure wear'] = 'athleisure'
+    mapping['athleisurewear'] = 'athleisure'
+    mapping['athleticwear'] = 'athleisure'
+    mapping['athletic wear'] = 'athleisure'
+    mapping['athletic wear'] = 'athleisure'
+    mapping['avant-garde'] = 'avant garde'
+    mapping['avantgarde'] = 'avant garde'
+    mapping['bohemian'] = 'boho'
+    mapping['bohemian chic'] = 'boho'
+    mapping['bohemian style'] = 'boho'
+    mapping['boho chic'] = 'boho'
+    mapping['boho style'] = 'boho'
+
+    for msg in user_messages:
+        for tag in actual_aes:
+            if tag.lower() in msg.lower().split():
+                logger.info(f"Applying brand aesthetic tag: {tag}")
+                return tag
+    return None
+
+
+def user_msgs_to_occassion(user_messages):
+    actual_occasions = ['date night', 'event', 'everyday', 'exercising',
+                        'lounging', 'resort', 'varies', 'work']
+    mapping = {v: v for v in actual_occasions}
+    mapping['varied'] = 'varies'
+    mapping['workout'] = 'exercising'
+    mapping['working out'] = 'exercising'
+    mapping['working out'] = 'exercising'
+    mapping['workout'] = 'exercising'
+
+    for msg in user_messages:
+        for tag in actual_occasions:
+            if tag.lower() in msg.lower().split():
+                logger.info(f"Applying brand occasion tag: {tag}")
+                return tag
+
 
 
 def es_prods_from_msgs(liaison_client, es_client,
@@ -382,6 +429,14 @@ def es_prods_from_msgs(liaison_client, es_client,
     brand_prices = [user_msgs_to_price(user_messages)]
     if brand_prices[0] is None:
         brand_prices = None
+
+    brand_aesthetics = [user_msgs_to_aesthetic(user_messages)]
+    if brand_aesthetics[0] is None:
+        brand_aesthetics = None
+
+    brand_occasions = [user_msgs_to_occassion(user_messages)]
+    if brand_occasions[0] is None:
+        brand_occasions = None
 
     params = search_template_params(
         keywords=keywords,
