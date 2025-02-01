@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import warnings
 import os
+import logging
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.tree import export_text, export_graphviz
@@ -12,6 +13,13 @@ import itertools
 import graphviz
 import pickle
 
+from local_llm_judge.log_stdout import enable
+
+log = logging.getLogger(__name__)
+
+enable('log_llm_judge')
+enable(__name__)
+
 
 def preference_to_label(preference):
     if preference == 'LHS':
@@ -20,7 +28,6 @@ def preference_to_label(preference):
         return 1
     else:
         return 0
-
 
 
 def visualize_tree(tree_model, feature_names):
@@ -56,7 +63,6 @@ def parse_args():
     # Get feature names in argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--feature_names", type=str, nargs="+")
-    parser.add_argument("--num_test", type=int, default=1000)
     args = parser.parse_args()
     return args
 
@@ -81,10 +87,13 @@ def predict(clf, test, feature_columns, threshold=0.9):
     same_label_when_pred = (
         test[test['prediction'] != 0]['human_preference'] == test[test['prediction'] != 0]['prediction']
     )
-    print(feature_columns)
-    precision = same_label_when_pred.sum() / len(same_label_when_pred)
-    recall = len(same_label_when_pred) / len(test)
-    print(f"Precision: {precision} - Recall: {recall}")
+    if len(same_label_when_pred) == 0:
+        precision = 0
+        recall = 0
+    else:
+        precision = same_label_when_pred.sum() / len(same_label_when_pred)
+        recall = len(same_label_when_pred) / len(test)
+    log.debug(f"P: {precision} - R: {recall}")
 
     return predictions, feature_columns, precision, recall
 
@@ -104,10 +113,7 @@ def permute_features(feature_columns):
     return permutations
 
 
-def main():
-    warnings.filterwarnings('ignore', category=pd.errors.SettingWithCopyWarning)
-    args = parse_args()
-    feature_df, feature_names = build_feature_df(args.feature_names)
+def kfold_trees(feature_names, feature_df):
     results = []
     for permutation in permute_features(feature_names):
         permutation = list(permutation)
@@ -125,31 +131,48 @@ def main():
             recalls.append(recall)
         if np.sum(recalls) != 0:
             full_trained = train_tree(feature_df, permutation)
-            model_path = f"data/model_{model_name}.pkl"
+            model_path = f"data/model/model_{model_name}.pkl"
             with open(model_path, 'wb') as f:
                 pickle.dump(full_trained, f)
             results.append({'permutation': permutation, 'precisions': precisions, 'recalls': recalls,
                             'model_path': model_path})
+            prec_mean = np.mean(precisions)
+            rec_mean = np.mean(recalls)
+            log.info(f"Permutation: {permutation} - P: {prec_mean} - R: {rec_mean}")
         # print(f"Permutation: {permutation} - Score: {score}")
+    return results
 
+
+def kfold_gbt(feature_names, feature_df):
+    results = []
+    precisions = []
+    recalls = []
     kf = KFold(n_splits=5)
-    gbt_precisions = []
-    gbt_recalls = []
     for train_index, test_index in kf.split(feature_df):
-        train = feature_df.tail(len(feature_df) - args.num_test)
-        test = feature_df.head(args.num_test)
+        train = feature_df.iloc[train_index]
+        test = feature_df.iloc[test_index]
         clf = train_gbt(train, feature_names)
         _, _, precision, recall = predict(clf, test, feature_columns=feature_names)
-        gbt_precisions.append(precision)
-        gbt_recalls.append(recall)
-        full_trained = train_gbt(feature_df, feature_names)
-        with open("data/model_gbt.pkl", 'wb') as f:
-            pickle.dump(full_trained, f)
-    results.append({'permutation': 'Gradient Boosting (all)', 'precisions': gbt_precisions,
-                    'recalls': gbt_recalls,
-                    'model_path': 'data/model_gbt.pkl'})
+        precisions.append(precision)
+        recalls.append(recall)
+    results.append({'permutation': 'Gradient Boosting (all)', 'precisions': precisions,
+                    'recalls': recalls,
+                    'model_path': 'data/model/model_gbt.pkl'})
+    prec_mean = np.mean(precisions)
+    rec_mean = np.mean(recalls)
+    log.info(f"Permutation: Gradient Boosting (all) - P: {prec_mean} - R: {rec_mean}")
+    return results
 
-    results_df = pd.DataFrame(results)
+
+def main():
+    warnings.filterwarnings('ignore', category=pd.errors.SettingWithCopyWarning)
+    args = parse_args()
+    feature_df, feature_names = build_feature_df(args.feature_names)
+    log.info(f"Using {len(feature_df)} samples")
+    results_trees = kfold_trees(feature_names, feature_df)
+    results_gbt = kfold_gbt(feature_names, feature_df)
+
+    results_df = pd.DataFrame(results_trees + results_gbt)
 
     results_df['recall_mean'] = results_df['recalls'].apply(np.mean)
     results_df['recall_var'] = results_df['recalls'].apply(np.var)
@@ -159,9 +182,9 @@ def main():
     results_df.sort_values('precision_mean', ascending=False, inplace=True)
 
     for _, row in results_df.head(10).iterrows():
-        print(row['model_path'])
-        print(row['permutation'], row['precision_mean'], row['recall_mean'],
-              row['precision_var'], row['recall_var'])
+        msg = f"M: {row['model_path']} stats: P: {row['precision_mean']:.2f} (var:{row['precision_var']:.2f})"
+        msg += f"R: {row['recall_mean']:.2f} (var:{row['recall_var']})"
+        log.info(msg)
         # write to disk
 
 

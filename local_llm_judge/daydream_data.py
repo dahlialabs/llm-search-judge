@@ -40,6 +40,7 @@ def _img_proxy_url(img_url):
 
 def pairwise_df(n, seed=42, sample_negatives=True):
     labeled_df = pd.read_parquet('data/labeled_options.parquet')
+    logger.info(f"Loaded {len(labeled_df)} labeled options")
     # labeled_df['main_image'] = labeled_df['main_image'].apply(_img_proxy_url)
     labeled_df.rename(columns={'description': 'product_description', 'rating': 'grade'}, inplace=True)
     for option_id in labeled_df[~labeled_df['main_image'].isna()]['option_id'].unique():
@@ -47,13 +48,24 @@ def pairwise_df(n, seed=42, sample_negatives=True):
         fetch_and_resize(image_url, option_id)
     labeled_df.drop_duplicates(subset=['query_id', 'option_id'], inplace=True)
     labeled_df['positive'] = True
-    labeled_df['user_messages_concat'] = labeled_df['user_messages'].apply(lambda x: " ".join(x))
 
     # The user messages of this id look like the agent is speaking, not the user
     bad_query_ids = ['3dbe47dd-09f1-425a-a430-a7e53d376f5d']
     labeled_df = labeled_df[~labeled_df['query_id'].isin(bad_query_ids)]
 
+    # Fix a trick question
+    trick_question = '696de9a0-49ac-4808-96cf-1f33837e5abb'
+
+    def remove_trick(x):
+        if x['query_id'] == trick_question:
+            x['user_messages'][0] = ""
+            x['user_messages'][1] = x['user_messages'][1].replace("nevermind.", "I")
+        return x
+    labeled_df = labeled_df.apply(remove_trick, axis=1)
+    labeled_df['user_messages_concat'] = labeled_df['user_messages'].apply(lambda x: " ".join(x))
+
     if sample_negatives:
+        logger.info("Sampling negatives")
         # Others positives as my negatives to give obvious negative cases
         good_results = labeled_df[labeled_df['grade'] == 5].set_index('query_id')
         neg_labels = []

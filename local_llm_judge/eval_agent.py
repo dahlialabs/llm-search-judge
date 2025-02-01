@@ -1,4 +1,7 @@
+import numpy as np
+
 import logging
+import requests
 
 from functools import cache
 from local_llm_judge.qwen import Qwen, Agent
@@ -572,8 +575,67 @@ def captions(query, product_lhs, product_rhs):
     return _parse_decision(response)
 
 
+inference_cache = {}
+simpler_query_cache = {}
+
+
+def _query_to_simple_query(query):
+    if len(query.split()) < 5:
+        return query
+    if query in simpler_query_cache:
+        return simpler_query_cache[query]
+    caption_prompt = f"""
+
+        Here is a potentially complex search request, please turn it into a simple search query
+        for a fashion product: {query}.
+
+        Respond with a singnle line with the simplified query and no other text.
+
+    """
+    response = qwen(caption_prompt)
+    simpler_query = response.split("\n")[-1].strip()
+    simpler_query_cache[query] = simpler_query
+    return response.split("\n")[-1].strip()
+
+
+def with_simpler_query(query, product_lhs, product_rhs, eval_fn):
+    simpler_query = _query_to_simple_query(query)
+    logger.info(f"Using simpler query: {simpler_query}")
+    return eval_fn(simpler_query, product_lhs, product_rhs)
+
+
+def _inference(inference_uri, text: str):
+    if text in inference_cache:
+        return inference_cache[text]
+    response = requests.post(inference_uri,
+                             json={'texts': [text]})
+    textVector = response.json()['textVectors'][0]
+    inference_cache[text] = textVector
+    return textVector
+
+
+def image_embedding(query, product_lhs, product_rhs):
+    inference_uri = "http://localhost:8012/vectorize"
+    # Turn query into simpler query
+    query_vector = _inference(inference_uri, query)
+
+    lhs_embedding = product_lhs['image_embedding']
+    rhs_embedding = product_rhs['image_embedding']
+
+    lhs_similarity = np.dot(query_vector, lhs_embedding) / (np.linalg.norm(query_vector) *
+                                                            np.linalg.norm(lhs_embedding))
+    rhs_similarity = np.dot(query_vector, rhs_embedding) / (np.linalg.norm(query_vector) *
+                                                            np.linalg.norm(rhs_embedding))
+    if lhs_similarity - rhs_similarity > 0.1:
+        return 'LHS'
+    elif rhs_similarity - lhs_similarity > 0.1:
+        return 'RHS'
+    return 'Neither'
+
+
 def all_fns():
     return [
+        image_embedding,
         captions,
         name,
         name_allow_neither2,

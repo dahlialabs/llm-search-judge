@@ -26,6 +26,7 @@ def parse_args():
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--destroy-cache', action='store_true', default=False)
     parser.add_argument('--check-both-ways', action='store_true', default=False)
+    parser.add_argument('--simplify-query', action='store_true', default=False)
     parser.add_argument('--llm-histroy', type=str, default=".llm_shell_history")
     args = parser.parse_args()
     all_fns = eval_agent.all_fns()
@@ -40,6 +41,10 @@ def parse_args():
         cache_key = "both_ways_" + args.eval_fn.__name__
         args.eval_fn = functools.partial(eval_agent.check_both_ways, eval_fn=args.eval_fn)
         args.cache_key = cache_key
+
+    if args.simplify_query:
+        args.eval_fn = functools.partial(eval_agent.with_simpler_query, eval_fn=args.eval_fn)
+        args.cache_key = "simplify_query_" + args.cache_key
 
     if args.seed != 42:
         args.cache_key += f"_seed_{args.seed}"
@@ -58,6 +63,7 @@ def product_row_to_dict(row):
             'name': row['product_name_x'],
             'main_image': row['main_image_x'],
             'main_image_path': fetch_and_resize(url=row['main_image_x'], option_id=row['option_id_x']),
+            'image_embedding': row['image_embedding_x'],
             'description': row['product_description_x'],
             'category': row['category_x'],
             'grade': row['grade_x']
@@ -68,6 +74,7 @@ def product_row_to_dict(row):
             'brand_name': row['brand_name_y'],
             'main_image': row['main_image_y'],
             'main_image_path': fetch_and_resize(url=row['main_image_y'], option_id=row['option_id_y']),
+            'image_embedding': row['image_embedding_y'],
             'name': row['product_name_y'],
             'description': row['product_description_y'],
             'category': row['category_y'],
@@ -172,9 +179,11 @@ def main(eval_fn=eval_agent.unanimous_ensemble_name_desc,
         positive_rhs = row['positive_y']
         product_lhs = product_row_to_dict(row[['product_name_x', 'product_description_x',
                                                'brand_name_x', 'main_image_x',
+                                               'image_embedding_x',
                                                'option_id_x', 'category_x', 'grade_x']])
         product_rhs = product_row_to_dict(row[['product_name_y', 'product_description_y',
                                                'brand_name_y', 'main_image_y',
+                                               'image_embedding_y',
                                                'option_id_y', 'category_y', 'grade_y']])
         if has_been_labeled(results_df, query, product_lhs, product_rhs):
             logger.info(f"Already rated query: {query}, " +
