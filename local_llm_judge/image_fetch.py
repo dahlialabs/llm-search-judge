@@ -15,10 +15,10 @@ def fetch_and_resize(url, option_id, width=512, height=1024, dest='~/.local-llm-
         os.makedirs(dest)
 
     if os.path.exists(f"{dest}/{option_id}.png"):
-        logger.info(f"Image {dest}/{option_id}.png already exists, returning path")
+        logger.debug(f"Image {dest}/{option_id}.png already exists, returning path")
         return f"{dest}/{option_id}.png"
 
-    logger.info(f"Fetching image from {url} for option {option_id} to {dest}")
+    logger.debug(f"Fetching image from {url} for option {option_id} to {dest}")
     response = requests.get(url)
     image = PIL.Image.open(io.BytesIO(response.content))
     image = image.resize((width, height))
