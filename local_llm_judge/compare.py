@@ -41,13 +41,20 @@ class FeatureCache:
 
 def get_feature_fn(feature_name):
     both_ways = False
+    simplify_query = False
     if feature_name.startswith('both_ways_'):
         feature_name = feature_name.replace('both_ways_', '')
         both_ways = True
 
+    if feature_name.startswith('simplify_query_'):
+        feature_name = feature_name.replace('simplify_query_', '')
+        simplify_query = True
+
     eval_fn = eval_agent.__dict__[feature_name]
     if both_ways:
         eval_fn = functools.partial(eval_agent.check_both_ways, eval_fn=eval_fn)
+    if simplify_query:
+        eval_fn = functools.partial(eval_agent.with_simpler_query, eval_fn=eval_fn)
     return eval_fn
 
 
@@ -80,6 +87,8 @@ def compare_results(model_path, query, results_lhs, results_rhs, cache, thresh=0
     with open(model_path, 'rb') as f:
         model = pickle.load(f)
     feature_names = model.feature_names_in_
+    log.info(f"Comparing {len(results_lhs)} vs {len(results_rhs)}")
+    log.info(f"Features: {feature_names}")
     feature_df = _build_feature_df(cache, feature_names, query, results_lhs, results_rhs)
 
     # Predict
