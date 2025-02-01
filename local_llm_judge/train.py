@@ -155,6 +155,10 @@ def kfold_gbt(feature_names, feature_df):
         _, _, precision, recall = predict(clf, test, feature_columns=feature_names)
         precisions.append(precision)
         recalls.append(recall)
+    clf = train_gbt(feature_df, feature_names)
+    model_path = 'data/model/model_gbt.pkl'
+    with open(model_path, 'wb') as f:
+        pickle.dump(clf, f)
     results.append({'permutation': 'Gradient Boosting (all)', 'precisions': precisions,
                     'recalls': recalls,
                     'model_path': 'data/model/model_gbt.pkl'})
