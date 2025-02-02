@@ -2,6 +2,7 @@ import argparse
 import logging
 import os
 import functools
+import inspect
 
 import pandas as pd
 from prompt_toolkit.history import FileHistory
@@ -17,6 +18,11 @@ logger = logging.getLogger(__name__)
 DEFAULT_SEED = 42
 
 
+def has_inference_uri_arg(fn):
+    args = inspect.getfullargspec(fn).args
+    return 'inference_uri' in args
+
+
 def parse_args():
     # List all functions in eval_agent
     parser = argparse.ArgumentParser()
@@ -24,6 +30,7 @@ def parse_args():
     parser.add_argument('--N', type=int, default=1000)
     parser.add_argument('--verbose', action='store_true')
     parser.add_argument('--seed', type=int, default=42)
+    parser.add_argument('--inference-uri', type=str, default='http://localhost:8012')
     parser.add_argument('--destroy-cache', action='store_true', default=False)
     parser.add_argument('--check-both-ways', action='store_true', default=False)
     parser.add_argument('--simplify-query', action='store_true', default=False)
@@ -37,6 +44,10 @@ def parse_args():
         exit(1)
     args.eval_fn = eval_agent.__dict__[args.eval_fn]
     args.cache_key = args.eval_fn.__name__
+
+    if has_inference_uri_arg(args.eval_fn):
+        args.eval_fn = functools.partial(args.eval_fn, inference_uri=args.inference_uri)
+
     if args.check_both_ways:
         cache_key = "both_ways_" + args.eval_fn.__name__
         args.eval_fn = functools.partial(eval_agent.check_both_ways, eval_fn=args.eval_fn)

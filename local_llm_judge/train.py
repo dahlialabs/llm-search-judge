@@ -6,7 +6,6 @@ import os
 import logging
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import GradientBoostingClassifier
-from sklearn.tree import export_text, export_graphviz
 from sklearn.model_selection import KFold
 
 import itertools
@@ -28,15 +27,6 @@ def preference_to_label(preference):
         return 1
     else:
         return 0
-
-
-def visualize_tree(tree_model, feature_names):
-    dot_data = export_graphviz(tree_model, out_file=None,
-                               feature_names=feature_names,
-                               filled=True, rounded=True,
-                               special_characters=True)
-    graph = graphviz.Source(dot_data)
-    graph.view()
 
 
 def build_feature_df(feature_names):

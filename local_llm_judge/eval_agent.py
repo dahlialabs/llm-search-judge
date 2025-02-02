@@ -614,9 +614,7 @@ def _inference(inference_uri, text: str):
     return textVector
 
 
-def image_embedding(query, product_lhs, product_rhs):
-    inference_uri = "http://localhost:8012/vectorize"
-    # Turn query into simpler query
+def image_embedding(query, product_lhs, product_rhs, inference_uri):
     query_vector = _inference(inference_uri, query)
 
     lhs_embedding = product_lhs['image_embedding']
