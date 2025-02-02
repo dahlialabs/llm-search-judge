@@ -4,6 +4,7 @@ import json
 import functools
 import logging
 import os
+import inspect
 
 from local_llm_judge import eval_agent
 from local_llm_judge.train import preference_to_label
@@ -39,7 +40,7 @@ class FeatureCache:
         return feature
 
 
-def get_feature_fn(feature_name):
+def get_feature_fn(feature_name, inference_uri="http://localhost:8012/vectorize"):
     both_ways = False
     simplify_query = False
     if feature_name.startswith('both_ways_'):
@@ -51,6 +52,10 @@ def get_feature_fn(feature_name):
         simplify_query = True
 
     eval_fn = eval_agent.__dict__[feature_name]
+    # Bind inference_uri
+    params = inspect.signature(eval_fn).parameters
+    if 'inference_uri' in params:
+        eval_fn = functools.partial(eval_fn, inference_uri=inference_uri)
     if both_ways:
         eval_fn = functools.partial(eval_agent.check_both_ways, eval_fn=eval_fn)
     if simplify_query:
@@ -153,7 +158,9 @@ def fetch_results(query, dept, lhsEnv, rhsEnv):
     return products_lhs, products_rhs, search_settings_lhs, search_settings_rhs
 
 
-def compare_env(model_path, queries, backend_lhs, backend_rhs, overwrite_feature_cache=False):
+def compare_env(model_path, queries, backend_lhs, backend_rhs,
+                overwrite_feature_cache=False,
+                inference_uri="http://localhost:8012/vectorize"):
     cache = FeatureCache(overwrite=overwrite_feature_cache)
     # model = "data/both_ways_desc_both_ways_category_both_ways_captions_both_ways_brand_both_ways_all_fields.pkl"
     log.info(f"Comparing {len(queries)} queries")
