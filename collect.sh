@@ -9,7 +9,7 @@ poetry run python -m local_llm_judge.main --verbose --eval-fn name --check-both-
 poetry run python -m local_llm_judge.main --verbose --eval-fn brand --check-both-ways --N $N
 poetry run python -m local_llm_judge.main --verbose --eval-fn desc --check-both-ways --N $N
 poetry run python -m local_llm_judge.main --verbose --eval-fn category --check-both-ways --N $N
-# poetry run python -m local_llm_judge.main --verbose --eval-fn captions --check-both-ways --N $N
+poetry run python -m local_llm_judge.main --verbose --eval-fn captions --check-both-ways --N $N
 
 # poetry run python -m local_llm_judge.main --verbose --eval-fn all_fields --check-both-ways --N $N
 

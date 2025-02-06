@@ -63,9 +63,10 @@ def get_feature_fn(feature_name, inference_uri="http://localhost:8012/vectorize"
     return eval_fn
 
 
-def _build_feature_df(cache, feature_names, query, results_lhs, results_rhs):
+def _build_feature_df(cache, feature_names, query, results_lhs, results_rhs,
+                      inference_uri="http://localhost:8012/vectorize"):
     # Build a dataframe of each feature
-    feature_fns = [get_feature_fn(feature_name) for feature_name in feature_names]
+    feature_fns = [get_feature_fn(feature_name, inference_uri) for feature_name in feature_names]
     features = []
     for (_, option_lhs), (_, option_rhs) in zip(results_lhs.iterrows(), results_rhs.iterrows()):
         row = {}
@@ -87,14 +88,16 @@ def _build_feature_df(cache, feature_names, query, results_lhs, results_rhs):
     return feature_df
 
 
-def compare_results(model_path, query, results_lhs, results_rhs, cache, thresh=0.8):
+def compare_results(model_path, query, results_lhs, results_rhs, cache, thresh=0.8,
+                    inference_uri="http://localhost:8012/vectorize"):
     model = None
     with open(model_path, 'rb') as f:
         model = pickle.load(f)
     feature_names = model.feature_names_in_
     log.info(f"Comparing {len(results_lhs)} vs {len(results_rhs)}")
     log.info(f"Features: {feature_names}")
-    feature_df = _build_feature_df(cache, feature_names, query, results_lhs, results_rhs)
+    feature_df = _build_feature_df(cache, feature_names, query, results_lhs, results_rhs,
+                                   inference_uri=inference_uri)
 
     # Predict
     probas = model.predict_proba(feature_df)
@@ -172,7 +175,7 @@ def compare_env(model_path, queries, backend_lhs, backend_rhs,
             query, dept = query
         log.info(f"Processing Query: {query} - Department: {dept}")
         stag_results, prod_results, ss_stag, ss_prod = fetch_results(query, dept, backend_lhs, backend_rhs)
-        df = compare_results(model_path, query, stag_results, prod_results, cache)
+        df = compare_results(model_path, query, stag_results, prod_results, cache, inference_uri=inference_uri)
         df['ss_lhs'] = json.dumps(ss_stag)
         df['ss_rhs'] = json.dumps(ss_prod)
         result_dfs.append(df)

@@ -10,6 +10,12 @@ logger = logging.getLogger(__name__)
 def fetch_and_resize(url, option_id, width=512, height=1024, dest='~/.local-llm-judge/img/'):
     if url is None:
         return None
+    if url.startswith('products/'):
+        # Then change url to img proxy
+        url.replace('products/', 'products://')
+        base_url = "https://cdn.stag.dahlialabs.dev/fotomancer/_/rs:fit:512:1024/plain/"
+        url = f"{base_url}{url}"
+        logger.debug(f"Using img proxy url: {url}")
     dest = os.path.expanduser(dest)
     if not os.path.exists(dest):
         os.makedirs(dest)

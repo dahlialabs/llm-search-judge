@@ -30,7 +30,7 @@ def parse_args():
     parser.add_argument('--N', type=int, default=1000)
     parser.add_argument('--verbose', action='store_true')
     parser.add_argument('--seed', type=int, default=42)
-    parser.add_argument('--inference-uri', type=str, default='http://localhost:8012')
+    parser.add_argument('--inference-uri', type=str, default='http://localhost:8012/vectorize')
     parser.add_argument('--destroy-cache', action='store_true', default=False)
     parser.add_argument('--check-both-ways', action='store_true', default=False)
     parser.add_argument('--simplify-query', action='store_true', default=False)
@@ -184,6 +184,7 @@ def main(eval_fn=eval_agent.unanimous_ensemble_name_desc,
         results_df = pd.DataFrame()
         pass
 
+    row_num = 0
     for idx, row in df.iterrows():
         query = " ".join(row['user_messages_x'])
         positive_lhs = row['positive_x']
@@ -215,7 +216,10 @@ def main(eval_fn=eval_agent.unanimous_ensemble_name_desc,
                                                                      agent_preference)])])
         results_df_stats(results_df)
 
-        results_df.to_pickle(f'data/features/{cache_key}.pkl')
+        if row_num % 10 == 0:
+            results_df.to_pickle(f'data/features/{cache_key}.pkl')
+        row_num += 1
+    results_df.to_pickle(f'data/features/{cache_key}.pkl')
     results_df_stats(results_df)
 
 

@@ -631,9 +631,27 @@ def image_embedding(query, product_lhs, product_rhs, inference_uri):
     return 'Neither'
 
 
+def image_embedding_close(query, product_lhs, product_rhs, inference_uri):
+    query_vector = _inference(inference_uri, query)
+
+    lhs_embedding = product_lhs['image_embedding']
+    rhs_embedding = product_rhs['image_embedding']
+
+    lhs_similarity = np.dot(query_vector, lhs_embedding) / (np.linalg.norm(query_vector) *
+                                                            np.linalg.norm(lhs_embedding))
+    rhs_similarity = np.dot(query_vector, rhs_embedding) / (np.linalg.norm(query_vector) *
+                                                            np.linalg.norm(rhs_embedding))
+    if lhs_similarity - rhs_similarity > 0.01:
+        return 'LHS'
+    elif rhs_similarity - lhs_similarity > 0.01:
+        return 'RHS'
+    return 'Neither'
+
+
 def all_fns():
     return [
         image_embedding,
+        image_embedding_close,
         captions,
         name,
         name_allow_neither2,
