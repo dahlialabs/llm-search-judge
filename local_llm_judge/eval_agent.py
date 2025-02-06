@@ -272,14 +272,37 @@ def desc_allow_neither(query, product_lhs, product_rhs):
 
 
 def brand(query, product_lhs, product_rhs):
+    if product_lhs['brand_name'].upper() == product_rhs['brand_name'].upper():
+        return 'Neither'
+
     instruction = f"""
         Which of these product brands (if either) is more relevant to the fashion e-commerce search query:
 
         Query: {query}
 
-        Product LHS brand : {product_lhs['brand_name']}
+        Product LHS brand : {product_lhs['brand_name'].upper()}
         Or
-        Product RHS brand : {product_rhs['brand_name']}
+        Product RHS brand : {product_rhs['brand_name'].upper()}
+
+        Respond with just 'LHS' or 'RHS'
+    """
+    response = generate(instruction)
+    return _parse_decision(response)
+
+
+def brand2(query, product_lhs, product_rhs):
+    if product_lhs['brand_name'].upper() == product_rhs['brand_name'].upper():
+        return 'Neither'
+
+    instruction = f"""
+        Which of these fashion brands (if either) is more likely to have products that satisfy
+        the fashion e-commerce search query:
+
+        Query: {query}
+
+        Product LHS brand : {product_lhs['brand_name'].upper()}
+        Or
+        Product RHS brand : {product_rhs['brand_name'].upper()}
 
         Respond with just 'LHS' or 'RHS'
     """
@@ -291,7 +314,7 @@ def brand_allow_neither(query, product_lhs, product_rhs):
     instruction = f"""
         Neither product is more relevant to the query, unless given compelling evidence.
 
-        Which of these product names (if either) is more relevant to the fashion e-commerce search query:
+        Which of these product brands (if either) is more relevant to the fashion e-commerce search query:
 
         Query: {query}
 
@@ -656,6 +679,7 @@ def all_fns():
         name,
         name_allow_neither2,
         brand,
+        brand2,
         brand_allow_neither,
         name_cot,
         name_cot2,
