@@ -11,10 +11,10 @@ logger = logging.getLogger(__name__)
 def img_proxy_url(image_path):
     if image_path.startswith('products/'):
         # Then change url to img proxy
-        image_path = image_path.replace('products/', 'products://')
+        image_path = image_path.replace('products/', 'products://products/')
     if image_path.startswith('/products/'):
         # Then change url to img proxy
-        image_path = image_path.replace('/products/', 'products://')
+        image_path = image_path.replace('/products/', '/products://products/')
     base_url = "https://cdn.stag.dahlialabs.dev/fotomancer/_/rs:fit:512:1024/plain/"
     image_path = f"{base_url}{image_path}"
     logger.debug(f"Using img proxy url: {image_path}")
