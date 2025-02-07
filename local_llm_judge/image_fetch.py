@@ -1,5 +1,6 @@
 import requests
 import PIL.Image
+from PIL import UnidentifiedImageError
 import io
 import os
 import logging
@@ -36,7 +37,11 @@ def fetch_and_resize(url, option_id, width=512, height=1024, dest='~/.local-llm-
 
     logger.debug(f"Fetching image from {url} for option {option_id} to {dest}")
     response = requests.get(url)
-    image = PIL.Image.open(io.BytesIO(response.content))
-    image = image.resize((width, height))
-    image.save(f"{dest}/{option_id}.png")
-    return f"{dest}/{option_id}.png"
+    try:
+        image = PIL.Image.open(io.BytesIO(response.content))
+        image = image.resize((width, height))
+        image.save(f"{dest}/{option_id}.png")
+        return f"{dest}/{option_id}.png"
+    except UnidentifiedImageError:
+        logger.error(f"Failed to fetch image from {url} for option {option_id} due to UnidentifiedImageError")
+        return None
